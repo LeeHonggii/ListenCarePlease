@@ -22,10 +22,19 @@ const TaggingPage = () => {
       const response = await axios.get(`${API_BASE_URL}/api/v1/tagging/${fileId}`);
       setData(response.data);
 
-      // 초기 매핑 설정 (시스템 제안 값으로)
+      // 초기 매핑 설정 (시스템 제안 값으로) - Enhanced 필드 포함
       const initialMappings = {};
       response.data.suggested_mappings.forEach(mapping => {
-        initialMappings[mapping.speaker_label] = mapping.suggested_name || '';
+        initialMappings[mapping.speaker_label] = {
+          suggested_name: mapping.suggested_name,
+          suggested_role: mapping.suggested_role || null,
+          final_name: mapping.suggested_name || '',
+          name_confidence: mapping.name_confidence || null,
+          role_confidence: mapping.role_confidence || null,
+          name_mentions: mapping.name_mentions || 0,
+          conflict_detected: mapping.conflict_detected || false,
+          needs_manual_review: mapping.needs_manual_review || false
+        };
       });
       setMappings(initialMappings);
 
@@ -40,13 +49,16 @@ const TaggingPage = () => {
   const handleMappingChange = (speakerLabel, value) => {
     setMappings(prev => ({
       ...prev,
-      [speakerLabel]: value
+      [speakerLabel]: {
+        ...prev[speakerLabel],
+        final_name: value
+      }
     }));
   };
 
   const handleSubmit = async () => {
     // 모든 화자에 이름이 입력되었는지 확인
-    const emptyMappings = Object.entries(mappings).filter(([_, name]) => !name.trim());
+    const emptyMappings = Object.entries(mappings).filter(([_, mapping]) => !mapping.final_name.trim());
     if (emptyMappings.length > 0) {
       alert('모든 화자의 이름을 입력해주세요.');
       return;
@@ -57,9 +69,9 @@ const TaggingPage = () => {
     try {
       const payload = {
         file_id: fileId,
-        mappings: Object.entries(mappings).map(([speaker_label, final_name]) => ({
+        mappings: Object.entries(mappings).map(([speaker_label, mapping]) => ({
           speaker_label,
-          final_name: final_name.trim()
+          final_name: mapping.final_name.trim()
         }))
       };
 
@@ -77,29 +89,29 @@ const TaggingPage = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-white text-xl">로딩 중...</div>
+      <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center">
+        <div className="text-gray-900 text-xl">로딩 중...</div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-red-400 text-xl">{error}</div>
+      <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center">
+        <div className="text-red-600 text-xl">{error}</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen py-8 px-4">
+    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 py-8 px-4">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-white mb-3">
+          <h1 className="text-4xl font-bold text-gray-900 mb-3">
             화자 태깅
           </h1>
-          <p className="text-white/80 text-lg">
+          <p className="text-gray-600 text-lg">
             감지된 화자에게 이름을 지정해주세요
           </p>
         </div>
@@ -130,10 +142,19 @@ const TaggingPage = () => {
 
             {/* 화자 매핑 입력 */}
             <div className="space-y-4">
-              {data.suggested_mappings.map((mapping, index) => (
+              {data.suggested_mappings.map((mapping, index) => {
+                const currentMapping = mappings[mapping.speaker_label];
+                const hasConflict = currentMapping?.conflict_detected;
+                const needsReview = currentMapping?.needs_manual_review;
+
+                return (
                 <div
                   key={mapping.speaker_label}
-                  className="p-4 bg-white/5 rounded-lg border border-white/10"
+                  className={`p-4 rounded-lg border-2 ${
+                    hasConflict
+                      ? 'bg-red-500/10 border-red-500/30'
+                      : 'bg-white/5 border-white/10'
+                  }`}
                 >
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center space-x-3">
@@ -146,12 +167,60 @@ const TaggingPage = () => {
                         {mapping.speaker_label}
                       </span>
                     </div>
-                    {mapping.suggested_name && (
-                      <span className="text-xs text-primary-300 bg-primary-500/20 px-2 py-1 rounded">
-                        제안: {mapping.suggested_name}
-                      </span>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {needsReview && (
+                        <span className="text-xs text-red-300 bg-red-500/30 px-2 py-1 rounded font-semibold">
+                          ⚠️ 확인 필요
+                        </span>
+                      )}
+                      {currentMapping?.suggested_name && (
+                        <span className="text-xs text-primary-300 bg-primary-500/20 px-2 py-1 rounded">
+                          제안: {currentMapping.suggested_name}
+                        </span>
+                      )}
+                    </div>
                   </div>
+
+                  {/* 신뢰도 및 역할 정보 */}
+                  {(currentMapping?.name_confidence || currentMapping?.suggested_role) && (
+                    <div className="mb-3 p-3 bg-white/5 rounded-lg space-y-2">
+                      {currentMapping.suggested_name && currentMapping.name_confidence && (
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-white/70">💡 이름 신뢰도:</span>
+                          <span className="text-primary-300 font-semibold">
+                            {Math.round(currentMapping.name_confidence * 100)}%
+                            {currentMapping.name_mentions > 0 && (
+                              <span className="text-white/50 ml-2">
+                                ({currentMapping.name_mentions}회 언급)
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                      )}
+                      {currentMapping.suggested_role && (
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-white/70">👔 추정 역할:</span>
+                          <span className="text-purple-300 font-semibold">
+                            {currentMapping.suggested_role}
+                            {currentMapping.role_confidence && (
+                              <span className="text-white/50 ml-2">
+                                ({Math.round(currentMapping.role_confidence * 100)}%)
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* 모순 경고 */}
+                  {hasConflict && (
+                    <div className="mb-3 p-3 bg-red-500/20 border border-red-500/30 rounded-lg">
+                      <p className="text-sm text-red-300">
+                        ⚠️ 대화 문맥에서 모순이 발견되었습니다. 수동으로 확인해주세요.
+                      </p>
+                    </div>
+                  )}
 
                   <div>
                     <label className="block text-white/70 text-sm mb-2">
@@ -160,7 +229,7 @@ const TaggingPage = () => {
                     <div className="flex space-x-2">
                       <input
                         type="text"
-                        value={mappings[mapping.speaker_label] || ''}
+                        value={currentMapping?.final_name || ''}
                         onChange={(e) => handleMappingChange(mapping.speaker_label, e.target.value)}
                         placeholder="이름을 입력하세요"
                         className="flex-1 px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/40 focus:outline-none focus:border-primary-400"
@@ -184,7 +253,8 @@ const TaggingPage = () => {
                     </div>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
 
             {/* 제출 버튼 */}
@@ -214,9 +284,9 @@ const TaggingPage = () => {
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-primary-300 font-medium">
                       {segment.speaker_label}
-                      {mappings[segment.speaker_label] && (
+                      {mappings[segment.speaker_label]?.final_name && (
                         <span className="text-white ml-2">
-                          ({mappings[segment.speaker_label]})
+                          ({mappings[segment.speaker_label].final_name})
                         </span>
                       )}
                     </span>

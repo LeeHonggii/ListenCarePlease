@@ -51,20 +51,20 @@ const ResultPage = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-white text-xl">결과를 불러오는 중...</div>
+      <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center">
+        <div className="text-gray-900 text-xl">결과를 불러오는 중...</div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="text-red-400 text-xl mb-4">{error}</div>
+          <div className="text-red-600 text-xl mb-4">{error}</div>
           <button
             onClick={handleNewUpload}
-            className="px-6 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600"
+            className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
           >
             처음으로 돌아가기
           </button>
@@ -74,7 +74,7 @@ const ResultPage = () => {
   }
 
   return (
-    <div className="min-h-screen py-8 px-4">
+    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 py-8 px-4">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="text-center mb-8">
@@ -83,10 +83,10 @@ const ResultPage = () => {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
           </div>
-          <h1 className="text-4xl font-bold text-white mb-3">
+          <h1 className="text-4xl font-bold text-gray-900 mb-3">
             분석 완료!
           </h1>
-          <p className="text-white/80 text-lg">
+          <p className="text-gray-600 text-lg">
             화자 태깅이 완료되었습니다
           </p>
         </div>

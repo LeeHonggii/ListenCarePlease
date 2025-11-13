@@ -130,7 +130,7 @@ I,O.md Step 4 결과 - 화자별 타임스탬프 + 임베딩
 ---
 
 ### 6. detected_names (감지된 이름)
-I,O.md Step 5a~5c 결과 - 시스템이 자동 감지한 이름들
+I,O.md Step 5a~5c 결과 - 시스템이 자동 감지한 이름들 (멀티턴 LLM 추론)
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -139,16 +139,22 @@ I,O.md Step 5a~5c 결과 - 시스템이 자동 감지한 이름들
 | detected_name | VARCHAR(100) | 감지된 이름 ("민서씨", "김팀장님" 등) |
 | speaker_label | VARCHAR(50) | 연관된 화자 레이블 (SPEAKER_00 등) |
 | time_detected | FLOAT | 이름이 언급된 시간 (초) |
-| confidence | FLOAT | 신뢰도 (0.0~1.0) |
+| confidence | FLOAT | 해당 언급의 신뢰도 (0.0~1.0) |
+| context_before | JSON | 이름 언급 전 5문장 문맥 |
+| context_after | JSON | 이름 언급 후 5문장 문맥 |
+| llm_reasoning | TEXT | LLM 추론 근거 |
+| is_consistent | BOOLEAN | 이전 추론과 일치 여부 |
 | similarity_score | FLOAT | 음성 임베딩 유사도 (동일인 판별용) |
 | created_at | TIMESTAMP | 생성 시간 |
 
-**인덱스:** `audio_file_id`
+**인덱스:** `audio_file_id`, `detected_name`
+
+**참고:** 같은 이름이 여러 번 언급되면 여러 행이 생성됨 (멀티턴 추적용)
 
 ---
 
 ### 7. speaker_mappings (화자 태깅 결과)
-I,O.md Step 5d~5e 결과 - 시스템 제안 vs 사용자 확정
+I,O.md Step 5d~5e 결과 - 시스템 제안 vs 사용자 확정 (하이브리드 방식)
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -156,12 +162,23 @@ I,O.md Step 5d~5e 결과 - 시스템 제안 vs 사용자 확정
 | audio_file_id | INT (FK) | 오디오 파일 ID |
 | speaker_label | VARCHAR(50) | 화자 레이블 (SPEAKER_00 등) |
 | suggested_name | VARCHAR(100) | 시스템 제안 이름 (nullable) |
+| suggested_role | VARCHAR(50) | 시스템 제안 역할 (진행자, 발표자 등, nullable) |
+| name_confidence | FLOAT | 이름 태깅 신뢰도 (멀티턴 LLM 최종 스코어) |
+| role_confidence | FLOAT | 역할 추론 신뢰도 |
+| name_mentions | INT | 이름 언급 횟수 (0이면 이름 감지 안됨) |
+| conflict_detected | BOOLEAN | 모순 발견 여부 (멀티턴 추론 중 발견) |
+| needs_manual_review | BOOLEAN | 수동 확인 필요 플래그 |
 | final_name | VARCHAR(100) | 사용자 확정 이름 |
 | is_modified | BOOLEAN | 사용자가 수정했는지 여부 |
 | created_at | TIMESTAMP | 생성 시간 |
 | updated_at | TIMESTAMP | 수정 시간 |
 
 **제약 조건:** `audio_file_id` + `speaker_label` UNIQUE
+
+**추가 설명:**
+- `name_confidence`가 null이면 이름 기반 태깅이 수행되지 않은 것 (역할만 추론)
+- `conflict_detected=true`이면 UI에서 경고 표시 권장
+- `needs_manual_review=true`이면 사용자에게 필수 확인 요청
 
 ---
 

@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     GITHUB_REDIRECT_URI: Optional[str] = None
 
     # CORS
-    BACKEND_CORS_ORIGINS: list = ["http://localhost:3000", "http://frontend:3000"]
+    BACKEND_CORS_ORIGINS: list = ["http://localhost:3000", "http://localhost:3001", "http://frontend:3000"]
 
     class Config:
         env_file = ".env"

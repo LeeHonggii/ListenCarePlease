@@ -30,9 +30,9 @@ const ProcessingPage = () => {
           if (currentStepIndex < steps.length) {
             runSteps();
           } else {
-            // 완료 후 태깅 페이지로 이동
+            // 완료 후 화자 정보 확인 페이지로 이동
             setTimeout(() => {
-              navigate(`/tagging/${fileId}`);
+              navigate(`/confirm/${fileId}`);
             }, 500);
           }
         }, step.duration);
@@ -43,13 +43,13 @@ const ProcessingPage = () => {
   }, [fileId, navigate]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4">
+    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-950 dark:to-purple-950 flex items-center justify-center px-4 transition-colors duration-300">
       <div className="max-w-2xl w-full">
-        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-12 border border-white/20 shadow-2xl">
+        <div className="bg-white dark:bg-gray-800 rounded-2xl p-12 border-2 border-gray-200 dark:border-gray-700 shadow-2xl">
           {/* 애니메이션 아이콘 */}
           <div className="flex justify-center mb-8">
             <div className="relative">
-              <div className="w-24 h-24 bg-gradient-to-r from-primary-500 to-secondary-500 rounded-full animate-pulse"></div>
+              <div className="w-24 h-24 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full animate-pulse"></div>
               <div className="absolute inset-0 flex items-center justify-center">
                 <svg
                   className="w-12 h-12 text-white animate-spin"
@@ -76,23 +76,23 @@ const ProcessingPage = () => {
 
           {/* 상태 텍스트 */}
           <div className="text-center mb-8">
-            <h2 className="text-3xl font-bold text-white mb-3">
+            <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-3">
               파일 분석 중...
             </h2>
-            <p className="text-white/80 text-lg">
+            <p className="text-gray-600 dark:text-gray-300 text-lg">
               {currentStep}
             </p>
           </div>
 
           {/* 진행률 바 */}
           <div className="mb-6">
-            <div className="flex justify-between text-sm text-white/70 mb-2">
+            <div className="flex justify-between text-sm text-gray-600 dark:text-gray-300 mb-2">
               <span>진행률</span>
               <span>{progress}%</span>
             </div>
-            <div className="w-full bg-white/20 rounded-full h-4 overflow-hidden">
+            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-4 overflow-hidden">
               <div
-                className="bg-gradient-to-r from-primary-500 to-secondary-500 h-full rounded-full transition-all duration-500 ease-out"
+                className="bg-gradient-to-r from-indigo-500 to-purple-500 h-full rounded-full transition-all duration-500 ease-out"
                 style={{ width: `${progress}%` }}
               />
             </div>
@@ -117,7 +117,7 @@ const ProcessingPage = () => {
                   className={`w-6 h-6 rounded-full flex items-center justify-center ${
                     step.done
                       ? 'bg-green-500'
-                      : 'bg-white/20'
+                      : 'bg-gray-300 dark:bg-gray-600'
                   }`}
                 >
                   {step.done && (
@@ -126,14 +126,14 @@ const ProcessingPage = () => {
                     </svg>
                   )}
                 </div>
-                <span className="text-white font-medium">{step.label}</span>
+                <span className="text-gray-900 dark:text-white font-medium">{step.label}</span>
               </div>
             ))}
           </div>
 
           {/* 안내 메시지 */}
-          <div className="mt-8 p-4 bg-white/5 rounded-lg border border-white/10">
-            <p className="text-white/60 text-sm text-center">
+          <div className="mt-8 p-4 bg-indigo-50 dark:bg-indigo-900/30 rounded-lg border border-indigo-200 dark:border-indigo-800">
+            <p className="text-indigo-700 dark:text-indigo-300 text-sm text-center">
               💡 처리가 완료되면 자동으로 다음 단계로 이동합니다
             </p>
           </div>

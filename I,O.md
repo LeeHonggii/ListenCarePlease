@@ -76,30 +76,257 @@
 - **Input 1 (from STT):** `List[WordSegment]` (3번 결과)
 - **Input 2 (from Diarization):** `DiarizationResult` (4번 결과 - 임베딩 포함)
 
-### 5a ~ 5c. 내부 처리 로직 (이름 감지, 목소리 비교)
+### 5a ~ 5c. 내부 처리 로직 (2가지 방식)
 
-1. **(이름 감지):** 3번(STT) 결과에서 "민서씨", "인서씨" 등 이름 후보를 추출합니다.
-2. **(문맥/화자 매칭):** "민서씨"(`[3.9s~4.5s]`)라는 텍스트가 4번(Diarization)의 `SPEAKER_01` 구간에서 나왔음을 확인합니다. -> 대화 흐름상 `SPEAKER_00`이 "민서"일 것이라 추정합니다.
-3. **(유사/동명 처리):** 만약 `SPEAKER_00`이 "인서"라고도 불렸다면, 4번의 `embeddings` 값을 가져와 두 목소리("민서"라 불린 `SPEAKER_00`과 "인서"라 불린 `SPEAKER_00`)의 **유사도를 내부적으로 비교**합니다.
-4. **(내부 결론):** "유사도 95%. 동일인이다. 대표 제안 이름은 '민서'로 하자."
+시스템은 상황에 따라 **2가지 화자 태깅 방식**을 사용합니다:
+
+---
+
+#### **방식 1: 이름 기반 태깅 (Name-based Tagging with Multi-turn LLM)**
+
+이름이 대화에서 언급된 경우 사용합니다.
+
+1. **(이름 감지):** 3번(STT) 결과에서 "민서씨", "인서씨", "김팀장님" 등 이름 후보를 추출합니다.
+
+2. **(확장 문맥 추출):** 이름이 나온 문장을 기준으로 **앞뒤 5개 문장**을 함께 추출합니다.
+   ```python
+   {
+     "detected_name": "민서",
+     "context_sentences": [
+       {"index": -5, "speaker": "SPEAKER_00", "text": "오늘 회의 시작하겠습니다", "time": 5.0},
+       {"index": -4, "speaker": "SPEAKER_01", "text": "네, 준비 완료했습니다", "time": 6.5},
+       {"index": -3, "speaker": "SPEAKER_00", "text": "첫 번째 안건은 무엇인가요", "time": 8.0},
+       {"index": -2, "speaker": "SPEAKER_01", "text": "저희 팀에서 준비한 내용입니다", "time": 9.2},
+       {"index": -1, "speaker": "SPEAKER_00", "text": "그럼 발표 부탁드립니다", "time": 10.0},
+       {"index": 0, "speaker": "SPEAKER_01", "text": "민서씨, 이번 회의 안건 발표해주세요", "time": 10.5},  // 이름 언급 지점
+       {"index": 1, "speaker": "SPEAKER_00", "text": "네, 알겠습니다", "time": 12.3},
+       {"index": 2, "speaker": "SPEAKER_00", "text": "이번 분기 목표는...", "time": 13.5},
+       {"index": 3, "speaker": "SPEAKER_01", "text": "좋은 내용이네요", "time": 18.0},
+       {"index": 4, "speaker": "SPEAKER_00", "text": "감사합니다", "time": 19.0},
+       {"index": 5, "speaker": "SPEAKER_01", "text": "추가 질문 있으신가요", "time": 20.0}
+     ]
+   }
+   ```
+
+3. **(멀티턴 LLM 추론):** LLM에게 문맥을 제공하고 **대화형 방식**으로 화자를 추론합니다.
+   ```python
+   # Turn 1: 첫 번째 이름 언급 분석
+   """
+   [User]
+   다음은 회의 대화 기록입니다. 화자를 특정해야 합니다.
+
+   대화 문맥 (이름 "민서" 언급 지점 전후 5문장):
+   - SPEAKER_00: "오늘 회의 시작하겠습니다"
+   - SPEAKER_01: "네, 준비 완료했습니다"
+   - SPEAKER_00: "첫 번째 안건은 무엇인가요"
+   - SPEAKER_01: "저희 팀에서 준비한 내용입니다"
+   - SPEAKER_00: "그럼 발표 부탁드립니다"
+   - SPEAKER_01: "민서씨, 이번 회의 안건 발표해주세요"  ← 이름 언급
+   - SPEAKER_00: "네, 알겠습니다"
+   - SPEAKER_00: "이번 분기 목표는..."
+   - SPEAKER_01: "좋은 내용이네요"
+   - SPEAKER_00: "감사합니다"
+   - SPEAKER_01: "추가 질문 있으신가요"
+
+   질문: "민서"는 SPEAKER_00과 SPEAKER_01 중 누구일까요? 근거와 함께 답변해주세요.
+   """
+
+   # LLM 응답:
+   {
+     "identified_speaker": "SPEAKER_00",
+     "reasoning": "SPEAKER_01이 '민서씨, 이번 회의 안건 발표해주세요'라고 말한 후, SPEAKER_00이 '네, 알겠습니다'로 응답하고 실제로 발표를 시작했습니다. 따라서 민서는 SPEAKER_00입니다.",
+     "confidence": 0.85
+   }
+
+   # 시스템: 스코어 기록
+   speaker_scores = {
+     "민서": {
+       "SPEAKER_00": 0.85,
+       "SPEAKER_01": 0.15
+     }
+   }
+   ```
+
+   ```python
+   # Turn 2: 같은 이름이 다시 언급된 경우
+   """
+   [User]
+   이전 분석에서 "민서"가 SPEAKER_00일 확률이 85%였습니다.
+
+   새로운 대화 문맥 (30초 후, "민서" 재언급):
+   - SPEAKER_01: "민서씨 의견에 동의합니다"
+   - SPEAKER_00: "네, 감사합니다"
+   - SPEAKER_01: "그럼 이 방향으로 진행하죠"
+
+   질문: 이 문맥에서도 "민서"가 SPEAKER_00이 맞나요?
+   """
+
+   # LLM 응답:
+   {
+     "identified_speaker": "SPEAKER_00",
+     "reasoning": "SPEAKER_01이 '민서씨 의견에 동의합니다'라고 말한 후, SPEAKER_00이 '네, 감사합니다'로 응답했습니다. 이전 분석과 일치합니다.",
+     "confidence": 0.95,
+     "consistency": true
+   }
+
+   # 시스템: 스코어 업데이트 (일치하므로 가중 평균으로 상향)
+   speaker_scores["민서"]["SPEAKER_00"] = (0.85 + 0.95) / 2 = 0.90
+   ```
+
+   ```python
+   # Turn 3: 모순된 문맥이 나타난 경우
+   """
+   [User]
+   이전 분석에서 "민서"가 SPEAKER_00일 확률이 90%였습니다.
+
+   새로운 대화 문맥 (1분 후):
+   - SPEAKER_00: "민서씨는 어떻게 생각하세요?"
+   - SPEAKER_01: "저는 이렇게 생각합니다"
+
+   질문: 이 문맥은 이전 분석과 모순되나요?
+   """
+
+   # LLM 응답:
+   {
+     "identified_speaker": "SPEAKER_01",
+     "reasoning": "SPEAKER_00이 '민서씨는 어떻게 생각하세요?'라고 질문하고, SPEAKER_01이 답변했습니다. 이는 민서가 SPEAKER_01임을 시사합니다. 이전 분석과 모순됩니다.",
+     "confidence": 0.80,
+     "consistency": false,
+     "conflict_detected": true
+   }
+
+   # 시스템: 스코어 재조정 (모순 발견 - 낮은 쪽으로 하향)
+   speaker_scores["민서"]["SPEAKER_00"] = 0.90 * 0.7 = 0.63
+   speaker_scores["민서"]["SPEAKER_01"] = 0.10 + 0.80 * 0.3 = 0.34
+
+   # 시스템: 사용자에게 수동 확인 요청 플래그 설정
+   needs_manual_review = true
+   ```
+
+4. **(유사/동명 처리):** 만약 같은 화자가 "민서", "인서"로 불렸다면, 음성 임베딩 유사도를 비교하여 동일인 여부를 확인합니다.
+   ```python
+   # 음성 임베딩 유사도 계산
+   similarity = cosine_similarity(
+     embeddings["SPEAKER_00"],  # "민서"로 추론된 화자
+     embeddings["SPEAKER_01"]   # "인서"로 추론된 화자
+   )
+
+   if similarity > 0.9:
+     # 높은 유사도 → 동일인 가능성
+     llm_prompt = """
+     "민서"와 "인서"가 같은 사람을 지칭할 가능성이 있습니다.
+     음성 유사도: 92%
+
+     문맥 1 (민서 언급): ...
+     문맥 2 (인서 언급): ...
+
+     이 두 이름이 같은 사람인가요, 아니면 다른 사람인가요?
+     """
+   ```
+
+---
+
+#### **방식 2: 역할 기반 클러스터링 (Role-based Clustering)**
+
+이름이 언급되지 않은 경우 또는 보조 수단으로 사용합니다.
+
+1. **(발화량 분석):** 각 화자의 총 발화 시간과 횟수를 계산합니다.
+   ```python
+   {
+     "SPEAKER_00": {"duration": 180.5, "turn_count": 45},  # 가장 많이 말함
+     "SPEAKER_01": {"duration": 95.3, "turn_count": 30},
+     "SPEAKER_02": {"duration": 50.1, "turn_count": 15}
+   }
+   ```
+
+2. **(발화 패턴 분석):** LLM을 사용하여 각 화자의 역할을 추론합니다.
+   ```python
+   # LLM 프롬프트
+   """
+   SPEAKER_00의 발화 샘플:
+   - "오늘 회의를 시작하겠습니다"
+   - "다음 안건으로 넘어가겠습니다"
+   - "시간 관계상 마무리하겠습니다"
+
+   SPEAKER_01의 발화 샘플:
+   - "제 생각에는 ~입니다"
+   - "이 부분에 대해 말씀드리자면"
+
+   질문: 각 화자의 역할을 추론해주세요.
+   """
+   # LLM 응답:
+   # SPEAKER_00: "진행자" (회의 흐름 제어)
+   # SPEAKER_01: "발표자" (내용 설명)
+   ```
+
+3. **(클러스터링 결과 생성):** 발화량과 패턴을 종합하여 역할을 부여합니다.
+   ```python
+   {
+     "SPEAKER_00": {"role": "진행자", "confidence": 0.92},
+     "SPEAKER_01": {"role": "발표자", "confidence": 0.85},
+     "SPEAKER_02": {"role": "참여자", "confidence": 0.78}
+   }
+   ```
+
+---
+
+#### **두 방식 결합 전략**
+
+- **이름이 일부만 감지된 경우**: 방식 1로 확정 + 방식 2로 미확정 화자 추론
+- **이름이 전혀 없는 경우**: 방식 2만 사용하여 역할 기반 라벨링
+- **최종 제안**: 두 방식의 결과를 통합하여 사용자에게 제시
 
 ### 5d. UI로 전달 (사용자 검증 요청)
 
 - **Output (to UI):**JSON
-    - 복잡한 비교 로직(`similarity_note`)은 **제외**하고, **단순화된 제안**만 전달합니다.
-    
+    - 2가지 방식의 결과를 통합하여 전달합니다.
+
     ```python
     {
-      "detected_names": ["민서", "인서"], // (참고용 전체 감지 이름)
+      "tagging_method": "hybrid",  // "name_based", "role_based", "hybrid"
+      "detected_names": ["민서", "인서"],  // 방식 1에서 감지된 이름
       "suggested_mappings": [
         {
           "label": "SPEAKER_00",
-          "suggested_name": "민서" 
-          // (백엔드가 '인서'와 동일인이라고 이미 판단 완료)
+          "suggested_name": "민서",  // 방식 1 결과 (이름)
+          "suggested_role": "진행자",  // 방식 2 결과 (역할)
+          "name_confidence": 0.90,  // 멀티턴 LLM 최종 스코어
+          "role_confidence": 0.92,
+          "name_mentions": 3,  // 이름이 언급된 횟수
+          "conflict_detected": false,  // 모순 발견 여부
+          "needs_manual_review": false,  // 수동 확인 필요 여부
+          "stats": {
+            "duration": 180.5,  // 총 발화 시간 (초)
+            "turn_count": 45    // 발화 횟수
+          }
         },
         {
           "label": "SPEAKER_01",
-          "suggested_name": null
+          "suggested_name": "인서",  // 이름 감지됨
+          "suggested_role": "발표자",  // 역할 추론됨
+          "name_confidence": 0.63,  // 낮은 신뢰도 (모순 발견)
+          "role_confidence": 0.85,
+          "name_mentions": 2,
+          "conflict_detected": true,  // ⚠️ 모순 발견!
+          "needs_manual_review": true,  // ⚠️ 사용자 확인 필요
+          "stats": {
+            "duration": 95.3,
+            "turn_count": 30
+          }
+        },
+        {
+          "label": "SPEAKER_02",
+          "suggested_name": null,  // 이름 감지 안됨
+          "suggested_role": "참여자",  // 역할만 추론됨
+          "name_confidence": null,
+          "role_confidence": 0.78,
+          "name_mentions": 0,
+          "conflict_detected": false,
+          "needs_manual_review": false,
+          "stats": {
+            "duration": 50.1,
+            "turn_count": 15
+          }
         }
       ]
     }

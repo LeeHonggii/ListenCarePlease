@@ -33,6 +33,8 @@ async def health_check():
 
 
 # API 라우터 추가
-from app.api.v1 import upload, tagging
+from app.api.v1 import auth, oauth, upload, tagging
+app.include_router(auth.router, prefix=settings.API_V1_STR, tags=["auth"])
+app.include_router(oauth.router, prefix=settings.API_V1_STR, tags=["oauth"])
 app.include_router(upload.router, prefix=settings.API_V1_STR, tags=["upload"])
 app.include_router(tagging.router, prefix=settings.API_V1_STR, tags=["tagging"])

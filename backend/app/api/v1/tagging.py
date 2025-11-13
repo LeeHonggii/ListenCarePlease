@@ -11,6 +11,50 @@ router = APIRouter()
 
 # Mock 데이터 저장소
 TAGGING_RESULTS = {}
+SPEAKER_INFO = {}  # 화자 정보 확인 페이지에서 저장한 데이터
+
+
+@router.get("/speaker-info/{file_id}")
+async def get_speaker_info(file_id: str):
+    """
+    화자 정보 조회 (Mock) - 화자 수 + 감지된 이름
+    프로세싱 완료 후 사용자 확인을 위한 기본 정보 제공
+    """
+    # 저장된 정보가 있으면 반환, 없으면 기본값
+    if file_id in SPEAKER_INFO:
+        return SPEAKER_INFO[file_id]
+
+    # Mock 기본 데이터
+    default_data = {
+        "file_id": file_id,
+        "speaker_count": 3,  # 시스템이 감지한 화자 수
+        "detected_names": ["민서", "인서", "김팀장"],  # STT에서 추출한 이름들
+        "processing_status": "completed"
+    }
+    SPEAKER_INFO[file_id] = default_data
+    return default_data
+
+
+@router.post("/speaker-info/confirm")
+async def confirm_speaker_info(request: dict):
+    """
+    화자 정보 확정 - 사용자가 수정한 화자 수 및 이름 저장
+    """
+    file_id = request.get("file_id")
+    speaker_count = request.get("speaker_count")
+    detected_names = request.get("detected_names")
+
+    SPEAKER_INFO[file_id] = {
+        "file_id": file_id,
+        "speaker_count": speaker_count,
+        "detected_names": detected_names,
+        "processing_status": "confirmed"
+    }
+
+    return {
+        "message": "화자 정보가 저장되었습니다.",
+        "status": "success"
+    }
 
 
 @router.get("/tagging/{file_id}", response_model=TaggingSuggestionDetailResponse)
@@ -19,24 +63,31 @@ async def get_tagging_suggestion(file_id: str):
     화자 태깅 제안 조회 (Mock)
     I,O.md Step 5d - 시스템이 분석한 결과를 사용자에게 제안
     """
+    # 사용자가 확정한 화자 정보 가져오기
+    speaker_info = SPEAKER_INFO.get(file_id, {
+        "speaker_count": 3,
+        "detected_names": ["민서", "인서", "김팀장"]
+    })
+
+    speaker_count = speaker_info.get("speaker_count", 3)
+    detected_names = speaker_info.get("detected_names", ["민서", "인서", "김팀장"])
+
+    # 화자 수에 따라 동적으로 매핑 생성
+    suggested_mappings = []
+    for i in range(speaker_count):
+        suggested_name = detected_names[i] if i < len(detected_names) else None
+        suggested_mappings.append(
+            SuggestedMapping(
+                speaker_label=f"SPEAKER_{i:02d}",
+                suggested_name=suggested_name
+            )
+        )
+
     # Mock 데이터 (실제로는 STT + Diarization 결과 기반으로 생성)
     mock_data = {
         "file_id": file_id,
-        "detected_names": ["민서", "인서", "김팀장"],  # 감지된 이름들
-        "suggested_mappings": [
-            SuggestedMapping(
-                speaker_label="SPEAKER_00",
-                suggested_name="민서"  # 시스템이 "민서"와 "인서"를 같은 사람으로 판단
-            ),
-            SuggestedMapping(
-                speaker_label="SPEAKER_01",
-                suggested_name="김팀장"
-            ),
-            SuggestedMapping(
-                speaker_label="SPEAKER_02",
-                suggested_name=None  # 이름을 찾지 못함
-            )
-        ],
+        "detected_names": detected_names,  # 사용자가 확정한 이름들
+        "suggested_mappings": suggested_mappings,
         "sample_transcript": [
             TranscriptSegment(
                 speaker_label="SPEAKER_00",
