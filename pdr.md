@@ -85,26 +85,40 @@
     - **로직:** **최대 겹침 (Max Overlap)**
     - **설명:** STT가 반환한 단어별 타임스탬프(`[3.0s~4.0s]`)와 화자 분리가 반환한 화자별 타임스탬프(`[2.9s~4.1s] Speaker B`)를 비교하여, **겹치는(Overlap) 시간이 가장 긴 화자**를 해당 단어의 최종 화자로 할당한다.
 - **[6. 화자 태깅]**
-    - **현황:** 설계 완료 (I,O.md 참조)
+    - **현황:** 설계 완료 (I,O.md, graph.md 참조)
+    - **아키텍처:** **LangGraph 기반 에이전틱 파이프라인**
+        - **프레임워크**: LangChain + LangGraph
+        - **LLM**: GPT-4 (OpenAI)
+        - **모니터링**: LangSmith
+        - **비동기**: FastAPI BackgroundTasks
     - **로직 (5a~5f 단계):**
-        1. **[5a~5c 내부 처리 - 2가지 방식]**
-            - **방식 1: 이름 기반 태깅 (Multi-turn LLM)**
-                - 이름 감지 → 전후 5문장 문맥 추출 → 멀티턴 LLM 추론
-                - 같은 이름 재언급 시 스코어 업데이트 (일치: 상향, 모순: 하향)
-                - 음성 임베딩 유사도 비교 (유사 이름 동일인 판별)
-            - **방식 2: 역할 기반 클러스터링**
+        1. **[자동 매칭]** 기존 화자 프로필 로드 (DB: `user_speaker_profiles`)
+            - 음성 임베딩 + 텍스트 임베딩 유사도 계산
+            - 임계값(0.85) 이상이면 자동 매칭 성공
+        2. **[5a~5c 내부 처리 - 2가지 방식 병렬 실행]**
+            - **방식 1: 이름 기반 태깅 (LLM 대화 흐름 분석)**
+                - 이름 감지 (NER 결과 활용)
+                - 전후 5문장 문맥 추출
+                - LLM 추론: "민서는 SPEAKER_00? SPEAKER_01?"
+            - **방식 2: 역할 기반 클러스터링 (LLM 발화 패턴 분석)**
                 - 발화량 분석 (시간, 횟수)
-                - LLM 기반 발화 패턴 분석 (진행자, 발표자, 참여자 등)
-        2. **[5d UI 제안]** 백엔드가 판단한 결과를 사용자에게 제시:
+                - LLM 추론: "SPEAKER_00은 진행자? 발표자?"
+        3. **[교차 검증]** 방식1, 방식2 결과 비교
+            - 일치 시 → 신뢰도 상승
+            - 모순 시 → needs_manual_review 플래그
+        4. **[5d UI 제안]** 백엔드가 판단한 결과를 사용자에게 제시:
             - `detected_names`: 감지된 모든 이름 리스트
             - `suggested_mappings`: 각 SPEAKER_XX에 대한 추천 이름 + 역할
-            - `name_confidence`: 멀티턴 LLM 최종 스코어
+            - `name_confidence`: LLM 판단 신뢰도
             - `role_confidence`: 역할 추론 신뢰도
+            - `auto_matched`: 임베딩 자동 매칭 여부
             - `conflict_detected`: 모순 발견 여부
             - `needs_manual_review`: 수동 확인 필요 플래그
-        3. **[5e 사용자 확정]** 사용자가 제안을 검토하고 수정/확정:
+        5. **[5e 사용자 확정]** 사용자가 제안을 검토하고 수정/확정:
             - Input: `{SPEAKER_00: "김민서", SPEAKER_01: "박철수"}`
-        4. **[5f 최종 병합]** 확정된 이름으로 최종 transcript 생성:
+        6. **[프로필 저장]** 새 화자를 `user_speaker_profiles`에 저장
+            - 다음 오디오에서 자동 매칭에 활용
+        7. **[5f 최종 병합]** 확정된 이름으로 최종 transcript 생성:
             - Output: `[{speaker_name, start_time, end_time, text}, ...]`
 - **[8. 요약/RAG/자막]**
     - **현황:** 선정 완료 (우선순위)
@@ -118,14 +132,22 @@
 
 ### 3.3. 기술 스택
 
-- **Frontend:** React
+- **Frontend:** React + Vite + TailwindCSS
     - 파일 업로드, 화자 태깅 UI, 결과 대시보드
+    - 다크모드 지원 (ThemeContext)
 - **Backend:** FastAPI
     - RESTful API, 비즈니스 로직, AI 모델 통합
-- **Database:** MySQL
+- **AI/ML:**
+    - **LangChain + LangGraph**: 에이전틱 파이프라인
+    - **OpenAI GPT-4**: 화자 추론 LLM
+    - **LangSmith**: Agent 추적 및 디버깅
+    - **Whisper**: STT 모델
+    - **Speaker Diarization**: 화자 분리 (모델 미확정)
+- **Database:** MySQL 8.0
     - 사용자 정보, 파일 메타데이터, 처리 결과 저장
-- **Authentication:** 카카오 API
-    - 소셜 로그인 (OAuth 2.0)
+    - `user_speaker_profiles`: 화자 임베딩 저장 (자동 매칭용)
+- **Authentication:** OAuth 2.0 (Google, Kakao) + JWT
+    - 하이브리드 인증 (이메일/비밀번호 + 소셜 로그인)
 - **Deployment:** Docker (docker-compose)
     - 멀티 컨테이너 구성 (frontend / backend / mysql 분리)
 
@@ -158,18 +180,36 @@ ListenCarePlease/
 │   ├── app/
 │   │   ├── api/              # API 라우터
 │   │   │   ├── v1/
-│   │   │   │   ├── auth.py       # 카카오 로그인
+│   │   │   │   ├── auth.py       # OAuth 로그인 (Google, Kakao)
 │   │   │   │   ├── upload.py     # 파일 업로드
 │   │   │   │   ├── process.py    # AI 처리 (STT, Diarization)
-│   │   │   │   ├── tagging.py    # 화자 태깅
+│   │   │   │   ├── tagging.py    # 화자 태깅 (Agent 호출)
 │   │   │   │   └── application.py # 요약/RAG/자막
-│   │   │   └── deps.py       # 의존성 (DB 세션 등)
+│   │   │   └── deps.py       # 의존성 (DB 세션, 인증 등)
+│   │   ├── agents/           # 🤖 LangGraph Agent (NEW!)
+│   │   │   ├── graph.py      # StateGraph 정의
+│   │   │   ├── nodes/        # Agent 노드들
+│   │   │   │   ├── load_profiles.py
+│   │   │   │   ├── embedding_match.py
+│   │   │   │   ├── name_extraction.py
+│   │   │   │   ├── name_based_tagging.py  # 방식1
+│   │   │   │   ├── role_based_tagging.py  # 방식2
+│   │   │   │   ├── merge_results.py
+│   │   │   │   └── save_profiles.py
+│   │   │   ├── tools/        # LangChain Tools
+│   │   │   │   ├── load_profiles_tool.py
+│   │   │   │   ├── voice_similarity_tool.py
+│   │   │   │   ├── text_similarity_tool.py
+│   │   │   │   └── save_profile_tool.py
+│   │   │   └── prompts/      # LLM 프롬프트 템플릿
+│   │   │       └── tagger_prompts.py
 │   │   ├── core/             # 핵심 설정
 │   │   │   ├── config.py     # 환경 변수
 │   │   │   └── security.py   # JWT, OAuth
 │   │   ├── models/           # SQLAlchemy 모델 (DB 테이블)
 │   │   │   ├── user.py
 │   │   │   ├── audio_file.py
+│   │   │   ├── speaker_profile.py  # 🆕 user_speaker_profiles
 │   │   │   └── transcript.py
 │   │   ├── schemas/          # Pydantic 스키마 (I/O 검증)
 │   │   │   ├── audio.py      # I,O.md 기반 스키마
@@ -179,7 +219,7 @@ ListenCarePlease/
 │   │   │   ├── preprocessing.py
 │   │   │   ├── stt_service.py
 │   │   │   ├── diarization_service.py
-│   │   │   ├── tagging_service.py
+│   │   │   ├── agent_service.py     # 🆕 Agent 호출 레이어
 │   │   │   └── llm_service.py
 │   │   ├── db/               # 데이터베이스
 │   │   │   ├── base.py
@@ -192,7 +232,9 @@ ListenCarePlease/
 ├── docker-compose.yml        # 멀티 컨테이너 오케스트레이션
 ├── .env                      # 환경 변수 (gitignore)
 ├── pdr.md                    # 프로젝트 설계 문서 (본 문서)
-└── I,O.md                    # 파이프라인 I/O 정의
+├── I,O.md                    # 파이프라인 I/O 정의
+├── graph.md                  # 🆕 LangGraph Agent 아키텍처
+└── database_schema.md        # DB 스키마 상세 문서
 ```
 
 **Docker 구성:**

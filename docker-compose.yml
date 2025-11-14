@@ -36,11 +36,13 @@ services:
       - ./backend/alembic.ini:/app/alembic.ini
       - ./backend/uploads:/app/uploads
       - ./backend/temp:/app/temp
+      - whisper_models:/app/.cache
     depends_on:
       mysql:
         condition: service_healthy
     environment:
       - MYSQL_HOST=mysql
+    shm_size: '4gb'  # Increase shared memory for large ML model loading
 
   # React Frontend
   frontend:
@@ -62,4 +64,6 @@ services:
 
 volumes:
   mysql_data:
+    driver: local
+  whisper_models:
     driver: local

@@ -1,0 +1,13 @@
+# Mac (Apple Silicon M1/M2/M3) specific dependencies
+# Install with: pip install -r requirements-base.txt -r requirements-mac.txt
+
+# PyTorch for Mac (MPS support)
+torch==2.1.0
+torchaudio==2.1.0
+
+# Senko (Speaker Diarization)
+# Note: Install from git after other dependencies
+# pip install git+https://github.com/narcotic-sh/senko.git
+
+# Additional audio processing
+librosa==0.10.1

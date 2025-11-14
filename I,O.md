@@ -73,8 +73,18 @@
 
 ### 5. [핵심 모듈] Tagger & Merge Logic (태깅 및 병합)
 
-- **Input 1 (from STT):** `List[WordSegment]` (3번 결과)
+- **Input 1 (from STT):** `List[WordSegment]` (3번 결과 - NER 이름 표시 포함)
 - **Input 2 (from Diarization):** `DiarizationResult` (4번 결과 - 임베딩 포함)
+
+**[🤖 에이전트 아키텍처]**
+- 화자 태깅 시스템은 **LangGraph 기반 에이전틱 파이프라인**으로 구현됩니다.
+- 상세 설계는 **`graph.md`** 참조
+
+**핵심 전략:**
+1. 기존 화자 프로필 로드 (DB: `user_speaker_profiles`)
+2. 음성+텍스트 임베딩으로 자동 매칭 시도
+3. 실패 시 → 방식1 + 방식2 병렬 실행 → 교차 검증
+4. 최종 프로필 저장 (다음 오디오에서 재사용)
 
 ### 5a ~ 5c. 내부 처리 로직 (2가지 방식)
 

@@ -24,3 +24,18 @@ python-dotenv==1.0.0
 
 # Utils
 pydantic-settings==2.1.0
+
+# Audio Processing & STT
+numpy==1.26.2
+soundfile==0.12.1
+webrtcvad==2.0.10
+scipy==1.11.4
+pydub==0.25.1
+openai-whisper==20231117
+
+# LangChain & AI
+openai==1.10.0
+langchain==0.1.0
+langchain-openai==0.0.5
+langgraph==0.0.20
+langsmith==0.0.87

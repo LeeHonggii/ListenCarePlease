@@ -1,0 +1,14 @@
+# GPU (NVIDIA CUDA) specific dependencies
+# Install with: pip install -r requirements-base.txt -r requirements-gpu.txt
+
+# PyTorch for CUDA
+torch==2.1.0+cu118
+torchaudio==2.1.0+cu118
+--extra-index-url https://download.pytorch.org/whl/cu118
+
+# Senko (Speaker Diarization) - GPU version
+# Note: Install from git after other dependencies
+# pip install git+https://github.com/narcotic-sh/senko.git[nvidia]
+
+# Additional audio processing
+librosa==0.10.1
