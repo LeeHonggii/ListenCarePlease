@@ -37,12 +37,19 @@ def run_diarization(audio_path: Path, device: str = None) -> Dict:
             }
         }
     """
+    import torch
+
     if not SENKO_AVAILABLE:
         raise ImportError("Senko is not installed. Please install it first.")
 
     # 디바이스 자동 감지
     if device is None:
         device = get_device()
+
+    # CUDA 실제 사용 가능 여부 재확인 (Docker와 실제 환경 불일치 방지)
+    if device == "cuda" and not torch.cuda.is_available():
+        print("⚠️ CUDA requested but not available. Falling back to CPU.")
+        device = "cpu"
 
     # Senko는 'auto' 또는 'cpu'/'cuda' 지원
     # MPS는 지원하지 않으므로 CPU로 폴백

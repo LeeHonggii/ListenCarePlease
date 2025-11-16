@@ -75,10 +75,14 @@
         - Input: `stt_input_path`
         - Output: 단어 레벨 타임스탬프 리스트 `[{text, start, end}, ...]`
 - **[4. Speaker Diarization]**
-    - **현황:** 보류
-    - **보류 사유:** **[2. 음성 전처리]** 방식이 확정된 후, 해당 전처리 데이터에 가장 높은 성능(DER 90% 목표)을 보이는 모델(NeMo, SENKO, AssembleAI 등 후보군)을 테스트하여 선정할 예정.
+    - **현황:** ✅ 선정 완료 (2025-11-16)
+    - **모델:** **Senko** (pyannote.audio 기반)
+    - **설정:**
+        - GPU 가속 지원 (CUDA 11.8 + PyTorch 2.1.0)
+        - Senko[nvidia] 버전 사용 (pyannote.audio 3.1.1 포함)
+        - 음성 임베딩 추출 기능 내장
     - **I/O 구조:**
-        - Input: `diar_input_path`
+        - Input: `diar_input_path` (전처리된 WAV 파일)
         - Output: 화자별 타임스탬프 + 임베딩 벡터 `{turns: [{speaker_label, start, end}], embeddings: {SPEAKER_XX: [vector]}}`
 - **[5. 병합 로직]**
     - **현황:** 설계 완료
@@ -141,8 +145,8 @@
     - **LangChain + LangGraph**: 에이전틱 파이프라인
     - **OpenAI GPT-4**: 화자 추론 LLM
     - **LangSmith**: Agent 추적 및 디버깅
-    - **Whisper**: STT 모델
-    - **Speaker Diarization**: 화자 분리 (모델 미확정)
+    - **Whisper large-v3**: STT 모델 (OpenAI API + 로컬 대안)
+    - **Senko**: 화자 분리 (pyannote.audio 기반, GPU 가속 지원)
 - **Database:** MySQL 8.0
     - 사용자 정보, 파일 메타데이터, 처리 결과 저장
     - `user_speaker_profiles`: 화자 임베딩 저장 (자동 매칭용)
@@ -487,7 +491,7 @@ services:
 
 ## 6. 진행 상황 요약 (Progress Summary)
 
-### 📅 최근 업데이트: 2025-11-10
+### 📅 최근 업데이트: 2025-11-16 (CUDA/GPU 환경 구축)
 
 #### ✅ 완료된 작업
 - **Step 1: Docker 환경 구축** (2025-11-10)
@@ -504,6 +508,24 @@ services:
     - MySQL 테이블 생성 완료
     - `database_schema.md` 문서화
 
+- **🆕 CUDA/GPU 환경 구축 및 화자 분리 모델 설정** (2025-11-16)
+    - **Docker CUDA 환경 구축**:
+        - PyTorch 2.1.0+cu118 (CUDA 11.8) 설치 완료
+        - NVIDIA GPU 지원 docker-compose.yml 설정
+        - Whisper large-v3 모델 사전 다운로드 (3GB)
+    - **Senko (화자 분리 라이브러리) 설정**:
+        - Senko[nvidia] 버전 설치 (pyannote.audio 포함)
+        - CUDA 라이브러리 심볼릭 링크 생성 (`libnvrtc.so` 에러 해결)
+        - LD_LIBRARY_PATH 환경 변수 설정
+    - **STT 및 화자 분리 파이프라인 테스트**:
+        - OpenAI Whisper API 타임아웃 30분으로 증가
+        - Whisper 병렬 처리 구현 (4개 청크 동시 전사)
+        - Senko 화자 분리 GPU 모드 정상 작동 확인
+    - **Docker 최적화**:
+        - 빌드 캐시 정리 및 디스크 공간 80GB 확보
+        - 멀티 플랫폼 빌드 지원 (cpu, cuda, mac)
+    - **결과**: STT + 화자 분리 파이프라인 E2E 테스트 성공
+
 #### 🔄 진행 중인 작업
 - 없음
 
@@ -514,8 +536,8 @@ services:
     - 하이브리드 OAuth (구글, 카카오, GitHub)
 
 #### 📊 전체 진행률
-- **Phase 1 (웹 인프라):** 33% (2/6 단계 완료)
-- **Phase 2 (AI 모듈):** 0% (대기 중)
+- **Phase 1 (웹 인프라):** 50% (3/6 단계 완료)
+- **Phase 2 (AI 모듈):** 40% (CUDA 환경 및 모델 설정 완료, 전처리 로직 구현 대기 중)
 - **Phase 3 (응용 기능):** 0% (대기 중)
 
 #### 📁 생성된 주요 파일
@@ -548,4 +570,10 @@ ListenCarePlease/
 #### 🎯 핵심 성과
 1. **Docker 기반 개발 환경 구축** - 팀원 간 환경 일관성 확보
 2. **체계적인 DB 설계** - I,O.md 기반 세분화된 테이블 구조로 디버깅 및 재처리 용이
-3. **명확한 문서화** - PDR, I/O, DB Schema 문서로 프로젝트 이해도 향상
+3. **명확한 문서화** - PDR, I/O, DB Schema, Graph 문서로 프로젝트 이해도 향상
+4. **🆕 CUDA/GPU 환경 완전 구축** (2025-11-16):
+    - PyTorch + CUDA 11.8 환경 설정 완료
+    - Senko 화자 분리 라이브러리 GPU 모드 정상 작동
+    - cuDNN 라이브러리 심볼릭 링크 문제 해결
+    - STT + 화자 분리 E2E 파이프라인 테스트 성공
+5. **🆕 화자 분리 모델 확정** - Senko (pyannote.audio 기반) 선정 및 통합 완료

@@ -193,12 +193,18 @@ def transcribe_single_chunk_local(
         SRT 파일 경로
     """
     import time
+    import torch
 
     if not LOCAL_WHISPER_AVAILABLE:
         raise ImportError("openai-whisper is not installed")
 
+    # CUDA 실제 사용 가능 여부 재확인
+    if device == "cuda" and not torch.cuda.is_available():
+        print("⚠️ CUDA requested but not available. Falling back to CPU.")
+        device = "cpu"
+
     size_mb = chunk_path.stat().st_size / (1024 * 1024)
-    print(f"▶️ {chunk_num}/{total_chunks} Local Whisper 전사 시작: {chunk_path.name} ({size_mb:.2f}MB)")
+    print(f"▶️ {chunk_num}/{total_chunks} Local Whisper 전사 시작: {chunk_path.name} ({size_mb:.2f}MB, device: {device})")
 
     try:
         start_time = time.time()
@@ -313,7 +319,7 @@ def transcribe_single_chunk(
     """
     import time
 
-    client = OpenAI(api_key=openai_api_key, timeout=600.0)
+    client = OpenAI(api_key=openai_api_key, timeout=1800.0)
     size_mb = chunk_path.stat().st_size / (1024 * 1024)
 
     print(f"▶️ {chunk_num}/{total_chunks} Whisper 전사 시작: {chunk_path.name} ({size_mb:.2f}MB)")

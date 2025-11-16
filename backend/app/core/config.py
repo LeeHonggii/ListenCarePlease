@@ -46,6 +46,11 @@ class Settings(BaseSettings):
     # OpenAI
     OPENAI_API_KEY: Optional[str] = None
 
+    # Whisper Settings
+    WHISPER_MODE: str = "local"  # "local" or "api"
+    WHISPER_MODEL_SIZE: str = "large-v3"  # tiny, base, small, medium, large, large-v3
+    WHISPER_DEVICE: str = "cpu"  # cpu or cuda
+
     class Config:
         env_file = ".env"
         case_sensitive = True

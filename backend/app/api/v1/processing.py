@@ -10,6 +10,7 @@ from app.services.preprocessing import preprocess_audio
 from app.services.stt import run_stt_pipeline
 from app.services.diarization import run_diarization, merge_stt_with_diarization
 from app.core.config import settings
+from app.core.device import get_device
 import json
 from sqlalchemy.orm import Session
 from app.api.deps import get_db
@@ -25,16 +26,33 @@ router = APIRouter()
 PROCESSING_STATUS: Dict[str, dict] = {}
 
 
-def process_audio_pipeline(file_id: str, db: Session):
+def process_audio_pipeline(
+    file_id: str,
+    db: Session,
+    whisper_mode: str = "local"
+):
     """
     백그라운드에서 오디오 처리 파이프라인 실행
+
+    Args:
+        file_id: 파일 ID
+        db: DB 세션
+        whisper_mode: Whisper 모드 ("local" 또는 "api")
     """
     try:
+        # 디바이스 자동 감지
+        device = get_device()
+
+        # 모델 크기 고정
+        model_size = "large-v3"
+
         # 상태 업데이트: 전처리 시작
         PROCESSING_STATUS[file_id] = {
             "status": "preprocessing",
             "step": "전처리 중...",
             "progress": 10,
+            "device": device,
+            "model_size": model_size,
         }
 
         # 1) 파일 경로 가져오기 (임시로 하드코딩, 나중에 DB에서 가져오기)
@@ -61,19 +79,23 @@ def process_audio_pipeline(file_id: str, db: Session):
         }
 
         # 3) STT
+        use_local = whisper_mode == "local"
+        stt_method = f"{'로컬' if use_local else 'API'} Whisper ({model_size})"
+
         PROCESSING_STATUS[file_id] = {
             "status": "stt",
-            "step": "STT 진행 중...",
+            "step": f"STT 진행 중... ({stt_method})",
             "progress": 40,
         }
 
-        # 로컬 Whisper 사용 (OpenAI API보다 안정적)
-        # large-v3 모델 사용 (최고 정확도, 빌드 시 미리 다운로드됨)
+        # Whisper 전사 (로컬 또는 API)
         final_txt = run_stt_pipeline(
-            preprocessed_path, work_dir,
-            use_local_whisper=True,
-            model_size="large-v3",
-            device="cpu"
+            preprocessed_path,
+            work_dir,
+            openai_api_key=settings.OPENAI_API_KEY if not use_local else None,
+            use_local_whisper=use_local,
+            model_size=model_size,
+            device=device
         )
 
         # 4) Diarization (화자 분리)
@@ -84,7 +106,7 @@ def process_audio_pipeline(file_id: str, db: Session):
         }
 
         try:
-            diarization_result = run_diarization(preprocessed_path)
+            diarization_result = run_diarization(preprocessed_path, device=device)
 
             # Diarization 결과 저장
             diarization_json = work_dir / "diarization_result.json"
@@ -155,15 +177,24 @@ def process_audio_pipeline(file_id: str, db: Session):
 
 
 @router.post("/process/{file_id}")
-async def start_processing(file_id: str, background_tasks: BackgroundTasks):
+async def start_processing(
+    file_id: str,
+    background_tasks: BackgroundTasks,
+    whisper_mode: str = None  # "local" or "api" (None일 경우 설정값 사용)
+):
     """
     오디오 처리 시작 (백그라운드)
 
     Args:
         file_id: 업로드된 파일 ID
+        whisper_mode: Whisper 모드 ("local" 또는 "api", 기본값: 설정값)
 
     Returns:
         처리 시작 확인 메시지
+
+    Note:
+        - model_size: large-v3 고정
+        - device: 자동 감지 (CUDA > MPS > CPU)
     """
     # 파일 존재 확인
     upload_dir = Path("/app/uploads")
@@ -171,20 +202,45 @@ async def start_processing(file_id: str, background_tasks: BackgroundTasks):
     if not input_files:
         raise HTTPException(status_code=404, detail="파일을 찾을 수 없습니다.")
 
+    # 설정값 또는 파라미터 사용
+    use_whisper_mode = whisper_mode if whisper_mode else settings.WHISPER_MODE
+
+    # Whisper 모드 검증
+    if use_whisper_mode not in ["local", "api"]:
+        raise HTTPException(status_code=400, detail="whisper_mode는 'local' 또는 'api'여야 합니다.")
+
+    # API 모드일 때 API 키 확인
+    if use_whisper_mode == "api" and not settings.OPENAI_API_KEY:
+        raise HTTPException(status_code=400, detail="OpenAI API 키가 설정되지 않았습니다. .env 파일을 확인하세요.")
+
+    # 디바이스 자동 감지
+    detected_device = get_device()
+
     # 백그라운드 작업 시작
     PROCESSING_STATUS[file_id] = {
         "status": "queued",
         "step": "대기 중...",
         "progress": 0,
+        "whisper_mode": use_whisper_mode,
+        "model_size": "large-v3",
+        "device": detected_device,
     }
 
     # TODO: DB 세션을 백그라운드 태스크에 전달
-    background_tasks.add_task(process_audio_pipeline, file_id, None)
+    background_tasks.add_task(
+        process_audio_pipeline,
+        file_id,
+        None,
+        use_whisper_mode
+    )
 
     return {
         "file_id": file_id,
         "message": "처리가 시작되었습니다.",
         "status": "queued",
+        "whisper_mode": use_whisper_mode,
+        "model_size": "large-v3",
+        "device": detected_device,
     }
 
 

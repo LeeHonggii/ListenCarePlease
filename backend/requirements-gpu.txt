@@ -6,6 +6,10 @@ torch==2.1.0+cu118
 torchaudio==2.1.0+cu118
 --extra-index-url https://download.pytorch.org/whl/cu118
 
+# Pyannote (Senko 의존성)
+pyannote.audio==3.1.1
+pyannote.core==5.0.0
+
 # Senko (Speaker Diarization) - GPU version
 # Note: Install from git after other dependencies
 # pip install git+https://github.com/narcotic-sh/senko.git[nvidia]

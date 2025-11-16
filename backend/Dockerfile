@@ -1,5 +1,8 @@
 FROM python:3.11-slim
 
+# 빌드 인자: PLATFORM (cpu, cuda, mac)
+ARG PLATFORM=cpu
+
 WORKDIR /app
 
 # 시스템 의존성 설치
@@ -23,12 +26,38 @@ RUN apt-get update && apt-get install -y \
 COPY requirements-base.txt .
 RUN pip install --no-cache-dir -r requirements-base.txt
 
-# Mac/CPU 환경용 의존성 (Docker는 일반적으로 CPU)
-COPY requirements-mac.txt .
-RUN pip install --no-cache-dir -r requirements-mac.txt
+# 플랫폼별 의존성 설치
+COPY requirements-mac.txt requirements-gpu.txt ./
+RUN if [ "$PLATFORM" = "mac" ]; then \
+        echo "Installing Mac (CPU) dependencies..." && \
+        pip install --no-cache-dir -r requirements-mac.txt; \
+    elif [ "$PLATFORM" = "cuda" ]; then \
+        echo "Installing CUDA (GPU) dependencies..." && \
+        pip install --no-cache-dir -r requirements-gpu.txt; \
+    else \
+        echo "Installing CPU dependencies..." && \
+        pip install --no-cache-dir -r requirements-mac.txt; \
+    fi
 
-# Senko 설치 (화자 분리)
-RUN pip install --no-cache-dir git+https://github.com/narcotic-sh/senko.git
+# Senko 설치 (화자 분리) - 플랫폼별 설치
+RUN if [ "$PLATFORM" = "cuda" ]; then \
+        echo "Installing Senko with NVIDIA support..." && \
+        pip install --no-cache-dir "git+https://github.com/narcotic-sh/senko.git#egg=senko[nvidia]"; \
+    else \
+        echo "Installing Senko (CPU)..." && \
+        pip install --no-cache-dir git+https://github.com/narcotic-sh/senko.git; \
+    fi
+
+# CUDA 라이브러리 심볼릭 링크 생성 (CUDA 플랫폼인 경우)
+RUN if [ "$PLATFORM" = "cuda" ]; then \
+        echo "Creating CUDA library symlinks..." && \
+        cd /usr/local/lib/python3.11/site-packages/torch/lib && \
+        ln -sf libnvrtc-672ee683.so.11.2 libnvrtc.so && \
+        ln -sf libnvrtc-672ee683.so.11.2 libnvrtc.so.11 && \
+        ln -sf libnvrtc-672ee683.so.11.2 libnvrtc.so.11.2 && \
+        ln -sf libnvrtc-builtins.so.11.8 libnvrtc-builtins.so && \
+        ls -la libnvrtc*; \
+    fi
 
 # Whisper 모델 미리 다운로드 (large-v3, 약 3GB)
 # 다운로드만 하고 로드는 하지 않음 (메모리 절약)
@@ -39,6 +68,9 @@ COPY ./app ./app
 
 # 업로드 디렉토리 및 모델 캐시 디렉토리 생성
 RUN mkdir -p /app/uploads /app/temp /app/.cache
+
+# PyTorch 번들 라이브러리 경로 설정 (cuDNN 등)
+ENV LD_LIBRARY_PATH=/usr/local/lib/python3.11/site-packages/torch/lib:$LD_LIBRARY_PATH
 
 # 포트 노출
 EXPOSE 8000

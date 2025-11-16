@@ -24,12 +24,14 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      args:
+        PLATFORM: ${DOCKER_PLATFORM:-cpu}  # cpu, cuda, mac (.env에서 설정)
     container_name: listencare_backend
     restart: unless-stopped
     env_file:
       - .env
     ports:
-      - "8000:8000"
+      - "9000:8000"
     volumes:
       - ./backend/app:/app/app
       - ./backend/alembic:/app/alembic
@@ -43,6 +45,13 @@ services:
     environment:
       - MYSQL_HOST=mysql
     shm_size: '4gb'  # Increase shared memory for large ML model loading
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
   # React Frontend
   frontend:
@@ -59,6 +68,8 @@ services:
       - /app/node_modules
     depends_on:
       - backend
+    environment:
+      - VITE_API_URL=http://localhost:9000
     stdin_open: true
     tty: true
 
