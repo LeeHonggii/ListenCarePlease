@@ -98,6 +98,15 @@ def process_audio_pipeline(
             device=device
         )
 
+        # STT 완료 후 메모리 정리 (Diarization 전 메모리 확보)
+        print("🧹 STT 완료, 메모리 정리 중...")
+        import gc
+        import torch
+        gc.collect()  # Python 가비지 컬렉션 강제 실행
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()  # CUDA 캐시 정리
+        print("✅ 메모리 정리 완료")
+
         # 4) Diarization (화자 분리)
         PROCESSING_STATUS[file_id] = {
             "status": "diarization",

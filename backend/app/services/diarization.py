@@ -60,14 +60,27 @@ def run_diarization(audio_path: Path, device: str = None) -> Dict:
     print(f"[Diarization] Using device: {device}")
     print(f"[Diarization] Processing: {audio_path}")
 
-    # Senko Diarizer 초기화
-    diarizer = senko.Diarizer(device=device, warmup=True, quiet=False)
+    # 메모리 정리 (Diarization 시작 전)
+    import gc
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+    # Senko Diarizer 초기화 (warmup은 메모리를 많이 사용하므로 CPU에서는 비활성화)
+    warmup = device != "cpu"  # CPU에서는 warmup 비활성화로 메모리 절약
+    print(f"[Diarization] Warmup: {warmup}")
+    diarizer = senko.Diarizer(device=device, warmup=warmup, quiet=False)
 
     # 화자 분리 실행
     senko_result = diarizer.diarize(str(audio_path), generate_colors=False)
 
     # 결과 변환
     result = convert_senko_to_custom_format(senko_result)
+
+    # Diarization 완료 후 메모리 정리
+    del diarizer
+    del senko_result
+    gc.collect()
 
     print(f"[Diarization] Detected {len(result['embeddings'])} speakers")
     print(f"[Diarization] {len(result['turns'])} segments")
