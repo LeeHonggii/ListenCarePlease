@@ -36,4 +36,26 @@ export const deleteFile = async (fileId) => {
   return response.data;
 };
 
+// 파일 처리 시작
+export const startProcessing = async (fileId, whisperMode, diarizationMode) => {
+  const params = new URLSearchParams();
+  if (whisperMode) params.append('whisper_mode', whisperMode);
+  if (diarizationMode) params.append('diarization_mode', diarizationMode);
+
+  const response = await api.post(`/api/v1/process/${fileId}?${params.toString()}`);
+  return response.data;
+};
+
+// 처리 상태 조회
+export const getProcessingStatus = async (fileId) => {
+  const response = await api.get(`/api/v1/status/${fileId}`);
+  return response.data;
+};
+
+// 최종 결과 조회
+export const getTranscript = async (fileId) => {
+  const response = await api.get(`/api/v1/transcript/${fileId}`);
+  return response.data;
+};
+
 export default api;

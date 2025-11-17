@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     GITHUB_REDIRECT_URI: Optional[str] = None
 
     # CORS
-    BACKEND_CORS_ORIGINS: list = ["http://localhost:3000", "http://localhost:3001", "http://frontend:3000"]
+    BACKEND_CORS_ORIGINS: list = ["http://localhost:3000", "http://localhost:3001", "http://localhost:3002", "http://localhost:3003", "http://frontend:3000"]
 
     # OpenAI
     OPENAI_API_KEY: Optional[str] = None
@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     WHISPER_MODE: str = "local"  # "local" or "api"
     WHISPER_MODEL_SIZE: str = "large-v3"  # tiny, base, small, medium, large, large-v3
     WHISPER_DEVICE: str = "cpu"  # cpu or cuda
+
+    # Diarization Settings
+    DIARIZATION_MODE: str = "senko"  # "senko" (fast) or "nemo" (accurate)
 
     class Config:
         env_file = ".env"

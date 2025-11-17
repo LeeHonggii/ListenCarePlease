@@ -7,8 +7,13 @@ const UploadPage = () => {
 
   const handleUploadSuccess = (result) => {
     console.log('Upload success:', result);
-    // 업로드 성공 후 처리 페이지로 이동
-    navigate(`/processing/${result.file_id}`);
+    // 업로드 성공 후 처리 페이지로 이동 (모드 정보 포함)
+    navigate(`/processing/${result.file_id}`, {
+      state: {
+        whisperMode: result.whisperMode,
+        diarizationMode: result.diarizationMode
+      }
+    });
   };
 
   return (

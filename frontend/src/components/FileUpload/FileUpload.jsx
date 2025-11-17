@@ -7,6 +7,8 @@ const FileUpload = ({ onUploadSuccess }) => {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState(null);
+  const [whisperMode, setWhisperMode] = useState('local'); // 'local' or 'api'
+  const [diarizationMode, setDiarizationMode] = useState('senko'); // 'senko' or 'nemo'
   const fileInputRef = useRef(null);
 
   const handleDragEnter = (e) => {
@@ -80,9 +82,13 @@ const FileUpload = ({ onUploadSuccess }) => {
         setUploadProgress(progress);
       });
 
-      // 업로드 성공
+      // 업로드 성공 - 모드 정보 포함
       if (onUploadSuccess) {
-        onUploadSuccess(result);
+        onUploadSuccess({
+          ...result,
+          whisperMode,
+          diarizationMode
+        });
       }
     } catch (err) {
       console.error('Upload error:', err);
@@ -153,12 +159,12 @@ const FileUpload = ({ onUploadSuccess }) => {
           </div>
         </div>
       ) : (
-        <div className="bg-white rounded-2xl p-8 shadow-lg border border-gray-200">
+        <div className="bg-white dark:bg-gray-800 rounded-2xl p-8 shadow-lg border border-gray-200 dark:border-gray-700">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center space-x-4">
-              <div className="w-12 h-12 bg-primary-100 rounded-full flex items-center justify-center">
+              <div className="w-12 h-12 bg-primary-100 dark:bg-primary-900 rounded-full flex items-center justify-center">
                 <svg
-                  className="w-6 h-6 text-primary-600"
+                  className="w-6 h-6 text-primary-600 dark:text-primary-400"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -172,8 +178,8 @@ const FileUpload = ({ onUploadSuccess }) => {
                 </svg>
               </div>
               <div>
-                <p className="font-semibold text-gray-900">{selectedFile.name}</p>
-                <p className="text-sm text-gray-500">
+                <p className="font-semibold text-gray-900 dark:text-white">{selectedFile.name}</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
                   {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
                 </p>
               </div>
@@ -181,13 +187,86 @@ const FileUpload = ({ onUploadSuccess }) => {
             {!isUploading && (
               <button
                 onClick={handleReset}
-                className="text-gray-400 hover:text-gray-600 transition"
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
             )}
+          </div>
+
+          {/* 모델 선택 옵션 */}
+          <div className="space-y-6 mb-6">
+            {/* 화자 분리 모델 선택 */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+                🎙️ 화자 분리 모델
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => setDiarizationMode('senko')}
+                  className={`p-4 rounded-lg border-2 transition-all ${
+                    diarizationMode === 'senko'
+                      ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
+                      : 'border-gray-200 dark:border-gray-700 hover:border-primary-300'
+                  }`}
+                >
+                  <div className="text-left">
+                    <div className="font-semibold text-gray-900 dark:text-white">Senko</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">⚡ 빠름, 간단</div>
+                  </div>
+                </button>
+                <button
+                  onClick={() => setDiarizationMode('nemo')}
+                  className={`p-4 rounded-lg border-2 transition-all ${
+                    diarizationMode === 'nemo'
+                      ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
+                      : 'border-gray-200 dark:border-gray-700 hover:border-primary-300'
+                  }`}
+                >
+                  <div className="text-left">
+                    <div className="font-semibold text-gray-900 dark:text-white">NeMo</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">🎯 정확, 세밀</div>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            {/* Whisper 모드 선택 */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+                📝 음성 인식 모델
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => setWhisperMode('local')}
+                  className={`p-4 rounded-lg border-2 transition-all ${
+                    whisperMode === 'local'
+                      ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
+                      : 'border-gray-200 dark:border-gray-700 hover:border-primary-300'
+                  }`}
+                >
+                  <div className="text-left">
+                    <div className="font-semibold text-gray-900 dark:text-white">Local</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">💻 로컬 Whisper</div>
+                  </div>
+                </button>
+                <button
+                  onClick={() => setWhisperMode('api')}
+                  className={`p-4 rounded-lg border-2 transition-all ${
+                    whisperMode === 'api'
+                      ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
+                      : 'border-gray-200 dark:border-gray-700 hover:border-primary-300'
+                  }`}
+                >
+                  <div className="text-left">
+                    <div className="font-semibold text-gray-900 dark:text-white">API</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">☁️ OpenAI API</div>
+                  </div>
+                </button>
+              </div>
+            </div>
           </div>
 
           {isUploading && (

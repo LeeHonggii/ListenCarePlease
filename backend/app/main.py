@@ -18,6 +18,18 @@ app.add_middleware(
 )
 
 
+# 앱 시작 시 데이터베이스 테이블 생성
+@app.on_event("startup")
+async def startup_event():
+    """앱 시작 시 실행되는 이벤트"""
+    from app.db.base import Base, engine
+    from app.models import user, audio_file, preprocessing, stt, diarization, tagging, transcript
+
+    print("🔧 Creating database tables...")
+    Base.metadata.create_all(bind=engine)
+    print("✅ Database tables created successfully")
+
+
 @app.get("/")
 async def root():
     return {

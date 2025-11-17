@@ -39,13 +39,24 @@ RUN if [ "$PLATFORM" = "mac" ]; then \
         pip install --no-cache-dir -r requirements-mac.txt; \
     fi
 
-# Senko 설치 (화자 분리) - 플랫폼별 설치
+# Senko 설치 (화자 분리 모델 1) - 플랫폼별 설치
 RUN if [ "$PLATFORM" = "cuda" ]; then \
         echo "Installing Senko with NVIDIA support..." && \
         pip install --no-cache-dir "git+https://github.com/narcotic-sh/senko.git#egg=senko[nvidia]"; \
     else \
         echo "Installing Senko (CPU)..." && \
         pip install --no-cache-dir git+https://github.com/narcotic-sh/senko.git; \
+    fi
+
+# NeMo 설치 (화자 분리 모델 2) - 선택적 설치
+# 주의: NeMo는 용량이 크므로 (~3GB) CUDA 플랫폼에서만 설치
+RUN if [ "$PLATFORM" = "cuda" ]; then \
+        echo "Installing NeMo Toolkit with ASR support..." && \
+        pip install --no-cache-dir nemo-toolkit[asr]==2.0.0rc0 && \
+        echo "Upgrading huggingface_hub for NeMo compatibility..." && \
+        pip install --no-cache-dir --upgrade huggingface_hub; \
+    else \
+        echo "Skipping NeMo (only available for CUDA)"; \
     fi
 
 # CUDA 라이브러리 심볼릭 링크 생성 (CUDA 플랫폼인 경우)

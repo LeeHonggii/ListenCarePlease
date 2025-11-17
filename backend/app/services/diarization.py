@@ -1,6 +1,7 @@
 """
 화자 분리 서비스 (I,O.md Step 4)
-- Senko를 사용한 화자 분리
+- 모델 1: Senko (빠름, 간단)
+- 모델 2: NeMo (정확, 세밀한 설정)
 - 화자별 임베딩 추출
 """
 from pathlib import Path
@@ -17,7 +18,28 @@ except ImportError:
 from app.core.device import get_device
 
 
-def run_diarization(audio_path: Path, device: str = None) -> Dict:
+def run_diarization(audio_path: Path, device: str = None, mode: str = "senko") -> Dict:
+    """
+    화자 분리 통합 인터페이스
+
+    Args:
+        audio_path: 오디오 파일 경로
+        device: 디바이스 ("cuda", "cpu", None=auto)
+        mode: 화자 분리 모델 ("senko" or "nemo")
+
+    Returns:
+        화자 분리 결과 (turns + embeddings)
+    """
+    if mode == "nemo":
+        # NeMo 모델 사용
+        from app.services.diarization_nemo import run_diarization_nemo
+        return run_diarization_nemo(audio_path, device)
+    else:
+        # Senko 모델 사용 (기본값)
+        return run_diarization_senko(audio_path, device)
+
+
+def run_diarization_senko(audio_path: Path, device: str = None) -> Dict:
     """
     Senko를 사용한 화자 분리
 

@@ -13,5 +13,10 @@ pyannote.core==5.0.0
 # Note: Install from git after other dependencies
 # pip install git+https://github.com/narcotic-sh/senko.git
 
+# NeMo (Advanced Speaker Diarization) - Optional
+# nemo-toolkit[asr]==2.0.0
+# Note: NeMo is OPTIONAL and LARGE (~3GB). Only install if needed:
+# pip install nemo-toolkit[asr]
+
 # Additional audio processing
 librosa==0.10.1

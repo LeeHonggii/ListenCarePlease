@@ -1,46 +1,79 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { startProcessing, getProcessingStatus } from '../services/api';
 
 const ProcessingPage = () => {
   const { fileId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const [progress, setProgress] = useState(0);
-  const [currentStep, setCurrentStep] = useState('전처리 중...');
+  const [currentStep, setCurrentStep] = useState('처리 시작 중...');
+  const [error, setError] = useState(null);
+
+  // 네비게이션 state에서 모드 정보 가져오기
+  const whisperMode = location.state?.whisperMode || 'local';
+  const diarizationMode = location.state?.diarizationMode || 'senko';
 
   useEffect(() => {
-    // Mock 처리 시뮬레이션
-    const steps = [
-      { progress: 20, text: '음성 전처리 중...', duration: 1000 },
-      { progress: 40, text: 'STT 분석 중...', duration: 1500 },
-      { progress: 60, text: '화자 분리 중...', duration: 1500 },
-      { progress: 80, text: '이름 감지 중...', duration: 1000 },
-      { progress: 100, text: '완료!', duration: 500 },
-    ];
+    let pollingInterval = null;
 
-    let currentStepIndex = 0;
+    const initiateProcessing = async () => {
+      try {
+        // 백엔드 처리 시작
+        await startProcessing(fileId, whisperMode, diarizationMode);
 
-    const runSteps = () => {
-      if (currentStepIndex < steps.length) {
-        const step = steps[currentStepIndex];
-        setProgress(step.progress);
-        setCurrentStep(step.text);
+        // 상태 폴링 시작 (2초마다)
+        pollingInterval = setInterval(async () => {
+          try {
+            const status = await getProcessingStatus(fileId);
 
-        setTimeout(() => {
-          currentStepIndex++;
-          if (currentStepIndex < steps.length) {
-            runSteps();
-          } else {
-            // 완료 후 화자 정보 확인 페이지로 이동
-            setTimeout(() => {
-              navigate(`/confirm/${fileId}`);
-            }, 500);
+            // 상태에 따라 진행률 및 메시지 업데이트
+            if (status.status === 'preprocessing') {
+              setProgress(30);
+              setCurrentStep('음성 전처리 중...');
+            } else if (status.status === 'stt') {
+              setProgress(50);
+              setCurrentStep('STT 분석 중...');
+            } else if (status.status === 'diarization') {
+              setProgress(75);
+              setCurrentStep('화자 분리 중...');
+            } else if (status.status === 'saving') {
+              setProgress(90);
+              setCurrentStep('결과 저장 중...');
+            } else if (status.status === 'completed') {
+              setProgress(100);
+              setCurrentStep('완료!');
+              clearInterval(pollingInterval);
+
+              // 완료 후 화자 정보 확인 페이지로 이동
+              setTimeout(() => {
+                navigate(`/confirm/${fileId}`);
+              }, 1000);
+            } else if (status.status === 'failed') {
+              setError(status.error || '처리 중 오류가 발생했습니다.');
+              clearInterval(pollingInterval);
+            }
+          } catch (err) {
+            console.error('Status polling error:', err);
+            // 폴링 에러는 무시하고 계속 진행
           }
-        }, step.duration);
+        }, 2000);
+
+      } catch (err) {
+        console.error('Processing error:', err);
+        setError(err.response?.data?.detail || '파일 처리 중 오류가 발생했습니다.');
       }
     };
 
-    runSteps();
-  }, [fileId, navigate]);
+    initiateProcessing();
+
+    // 컴포넌트 언마운트 시 폴링 중지
+    return () => {
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+      }
+    };
+  }, [fileId, navigate, whisperMode, diarizationMode]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-950 dark:to-purple-950 flex items-center justify-center px-4 transition-colors duration-300">
@@ -84,6 +117,31 @@ const ProcessingPage = () => {
             </p>
           </div>
 
+          {/* 선택된 모델 정보 */}
+          <div className="mb-8 p-4 bg-indigo-50 dark:bg-indigo-900/30 rounded-lg border border-indigo-200 dark:border-indigo-800">
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <span className="text-indigo-600 dark:text-indigo-400 font-medium">🎙️ 화자 분리:</span>
+                <span className="ml-2 text-indigo-800 dark:text-indigo-200">
+                  {diarizationMode === 'senko' ? 'Senko (빠름)' : 'NeMo (정확)'}
+                </span>
+              </div>
+              <div>
+                <span className="text-indigo-600 dark:text-indigo-400 font-medium">📝 음성 인식:</span>
+                <span className="ml-2 text-indigo-800 dark:text-indigo-200">
+                  {whisperMode === 'local' ? 'Local Whisper' : 'OpenAI API'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* 에러 메시지 */}
+          {error && (
+            <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg">
+              <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+            </div>
+          )}
+
           {/* 진행률 바 */}
           <div className="mb-6">
             <div className="flex justify-between text-sm text-gray-600 dark:text-gray-300 mb-2">
@@ -101,10 +159,10 @@ const ProcessingPage = () => {
           {/* 처리 단계 */}
           <div className="space-y-3">
             {[
-              { label: '음성 전처리', done: progress >= 20 },
-              { label: 'STT 분석', done: progress >= 40 },
-              { label: '화자 분리', done: progress >= 60 },
-              { label: '이름 감지', done: progress >= 80 },
+              { label: '음성 전처리', done: progress >= 30 },
+              { label: 'STT 분석', done: progress >= 50 },
+              { label: '화자 분리', done: progress >= 75 },
+              { label: '결과 저장', done: progress >= 90 },
               { label: '완료', done: progress >= 100 },
             ].map((step, index) => (
               <div
