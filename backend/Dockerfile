@@ -53,8 +53,8 @@ RUN if [ "$PLATFORM" = "cuda" ]; then \
 RUN if [ "$PLATFORM" = "cuda" ]; then \
         echo "Installing NeMo Toolkit with ASR support..." && \
         pip install --no-cache-dir nemo-toolkit[asr]==2.0.0rc0 && \
-        echo "Upgrading huggingface_hub for NeMo compatibility..." && \
-        pip install --no-cache-dir --upgrade huggingface_hub; \
+        echo "Downgrading huggingface-hub to 0.23.2 for compatibility..." && \
+        pip install --no-cache-dir --force-reinstall huggingface-hub==0.23.2; \
     else \
         echo "Skipping NeMo (only available for CUDA)"; \
     fi

@@ -491,7 +491,7 @@ services:
 
 ## 6. 진행 상황 요약 (Progress Summary)
 
-### 📅 최근 업데이트: 2025-11-16 (CUDA/GPU 환경 구축)
+### 📅 최근 업데이트: 2025-11-18 (NER 및 DB 저장 구현 완료)
 
 #### ✅ 완료된 작업
 - **Step 1: Docker 환경 구축** (2025-11-10)
@@ -508,7 +508,7 @@ services:
     - MySQL 테이블 생성 완료
     - `database_schema.md` 문서화
 
-- **🆕 CUDA/GPU 환경 구축 및 화자 분리 모델 설정** (2025-11-16)
+- **CUDA/GPU 환경 구축 및 화자 분리 모델 설정** (2025-11-16)
     - **Docker CUDA 환경 구축**:
         - PyTorch 2.1.0+cu118 (CUDA 11.8) 설치 완료
         - NVIDIA GPU 지원 docker-compose.yml 설정
@@ -526,8 +526,26 @@ services:
         - 멀티 플랫폼 빌드 지원 (cpu, cuda, mac)
     - **결과**: STT + 화자 분리 파이프라인 E2E 테스트 성공
 
+- **🆕 NER (Named Entity Recognition) 및 DB 저장 구현** (2025-11-18)
+    - **NER 모델 통합**:
+        - `seungkukim/korean-pii-masking` BERT 모델 사용
+        - Levenshtein Distance 기반 유사 이름 클러스터링 구현
+        - 이름 감지 + 화자 레이블 매핑 완료
+    - **DB 저장 로직 구현**:
+        - `stt_results`: 전사 텍스트 저장 (TEXT 컬럼으로 긴 세그먼트 지원)
+        - `diarization_results`: 화자 구간 + 임베딩 벡터 저장 (JSON)
+        - `detected_names`: 감지된 이름 + 앞뒤 5문장 context 저장 (I,O.md 5a~5c 스펙)
+        - `speaker_mappings`: 화자별 초기 레코드 생성 (suggested_name=None)
+    - **Alembic 마이그레이션**:
+        - `stt_results.text` VARCHAR(100) → TEXT 변경 마이그레이션 생성 및 적용
+    - **Context 추출 로직**:
+        - 이름이 언급된 문장 기준 앞뒤 5문장 추출
+        - index, speaker, text, time 정보를 JSON 형태로 저장
+        - 향후 멀티턴 LLM 추론에 활용 예정
+    - **결과**: STT → Diarization → NER → DB 저장 파이프라인 E2E 성공
+
 #### 🔄 진행 중인 작업
-- 없음
+- 없음 (다음 단계: 멀티턴 LLM 추론 구현)
 
 #### ⏭️ 다음 단계
 - **Step 3: 인증 시스템 구현**
@@ -537,7 +555,7 @@ services:
 
 #### 📊 전체 진행률
 - **Phase 1 (웹 인프라):** 50% (3/6 단계 완료)
-- **Phase 2 (AI 모듈):** 40% (CUDA 환경 및 모델 설정 완료, 전처리 로직 구현 대기 중)
+- **Phase 2 (AI 모듈):** 70% (STT, Diarization, NER, DB 저장 완료 / LLM 추론 구현 대기 중)
 - **Phase 3 (응용 기능):** 0% (대기 중)
 
 #### 📁 생성된 주요 파일
@@ -571,9 +589,15 @@ ListenCarePlease/
 1. **Docker 기반 개발 환경 구축** - 팀원 간 환경 일관성 확보
 2. **체계적인 DB 설계** - I,O.md 기반 세분화된 테이블 구조로 디버깅 및 재처리 용이
 3. **명확한 문서화** - PDR, I/O, DB Schema, Graph 문서로 프로젝트 이해도 향상
-4. **🆕 CUDA/GPU 환경 완전 구축** (2025-11-16):
+4. **CUDA/GPU 환경 완전 구축** (2025-11-16):
     - PyTorch + CUDA 11.8 환경 설정 완료
     - Senko 화자 분리 라이브러리 GPU 모드 정상 작동
     - cuDNN 라이브러리 심볼릭 링크 문제 해결
     - STT + 화자 분리 E2E 파이프라인 테스트 성공
-5. **🆕 화자 분리 모델 확정** - Senko (pyannote.audio 기반) 선정 및 통합 완료
+5. **화자 분리 모델 확정** - Senko (pyannote.audio 기반) 선정 및 통합 완료
+6. **🆕 NER 및 DB 저장 완전 구현** (2025-11-18):
+    - 한국어 이름 감지 NER 모델 통합 (`seungkukim/korean-pii-masking`)
+    - Levenshtein Distance 기반 유사 이름 클러스터링
+    - DetectedName 테이블에 context (앞뒤 5문장) 저장
+    - SpeakerMapping 초기 레코드 생성 (향후 LLM 추론 대기)
+    - STT → Diarization → NER → DB 저장 전체 파이프라인 완성

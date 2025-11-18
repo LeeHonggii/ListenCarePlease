@@ -115,24 +115,27 @@ def preprocess_audio(
     temp_converted = output_path.parent / f"temp_converted_{output_path.stem}.wav"
     temp_converted.parent.mkdir(parents=True, exist_ok=True)
 
-    subprocess.run(
-        [
-            "ffmpeg",
-            "-y",
-            "-i",
-            str(input_path),
-            "-ar",
-            "16000",
-            "-ac",
-            "1",
-            "-acodec",
-            "pcm_s16le",
-            str(temp_converted),
-        ],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=True,
-    )
+    try:
+        result = subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-i",
+                str(input_path),
+                "-ar",
+                "16000",
+                "-ac",
+                "1",
+                "-acodec",
+                "pcm_s16le",
+                str(temp_converted),
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+        )
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"ffmpeg 변환 실패: {e.stderr.decode('utf-8', errors='ignore')}")
 
     # 2) 전처리 (HPF + VAD + Normalize)
     audio, sr = sf.read(str(temp_converted), always_2d=False)

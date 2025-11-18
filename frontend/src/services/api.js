@@ -58,4 +58,16 @@ export const getTranscript = async (fileId) => {
   return response.data;
 };
 
+// NER 결과 조회
+export const getNERResult = async (fileId) => {
+  const response = await api.get(`/api/v1/ner/${fileId}`);
+  return response.data;
+};
+
+// 병합된 결과 조회 (STT + Diarization + NER)
+export const getMergedResult = async (fileId) => {
+  const response = await api.get(`/api/v1/merged/${fileId}`);
+  return response.data;
+};
+
 export default api;

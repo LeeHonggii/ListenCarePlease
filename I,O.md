@@ -73,18 +73,23 @@
 
 ### 5. [핵심 모듈] Tagger & Merge Logic (태깅 및 병합)
 
-- **Input 1 (from STT):** `List[WordSegment]` (3번 결과 - NER 이름 표시 포함)
+- **Input 1 (from STT):** `List[WordSegment]` (3번 결과)
 - **Input 2 (from Diarization):** `DiarizationResult` (4번 결과 - 임베딩 포함)
 
-**[🤖 에이전트 아키텍처]**
-- 화자 태깅 시스템은 **LangGraph 기반 에이전틱 파이프라인**으로 구현됩니다.
-- 상세 설계는 **`graph.md`** 참조
+**[✅ 현재 구현 상태 - 2025-11-18]**
+- **NER (Named Entity Recognition)**: `seungkukim/korean-pii-masking` BERT 모델 사용
+- **Levenshtein Distance Clustering**: 유사 이름 그룹화 ("재형", "재" → "재형")
+- **DB 저장 완료**:
+  - `detected_names`: 감지된 이름 + 앞뒤 5문장 context (JSON 형태)
+  - `speaker_mappings`: 화자별 초기 레코드 (suggested_name=None, 향후 LLM이 추론)
+  - `stt_results`: 전사 텍스트 (TEXT 컬럼으로 긴 세그먼트 지원)
+  - `diarization_results`: 화자 구간 + 임베딩 벡터 (JSON 형태)
 
-**핵심 전략:**
-1. 기존 화자 프로필 로드 (DB: `user_speaker_profiles`)
-2. 음성+텍스트 임베딩으로 자동 매칭 시도
-3. 실패 시 → 방식1 + 방식2 병렬 실행 → 교차 검증
-4. 최종 프로필 저장 (다음 오디오에서 재사용)
+**[🚧 향후 구현 예정]**
+- **LangGraph 기반 에이전틱 파이프라인** (상세 설계는 `graph.md` 참조)
+- **멀티턴 LLM 추론**: DetectedName의 context를 활용한 화자 식별
+- **자동 매칭**: 기존 화자 프로필 로드 및 임베딩 유사도 비교
+- **교차 검증**: 방식1(이름 기반) + 방식2(역할 기반) 결과 비교
 
 ### 5a ~ 5c. 내부 처리 로직 (2가지 방식)
 
@@ -289,55 +294,59 @@
 ### 5d. UI로 전달 (사용자 검증 요청)
 
 - **Output (to UI):**JSON
-    - 2가지 방식의 결과를 통합하여 전달합니다.
+    - **[✅ 현재 구현]**: `detected_names` 테이블에 감지된 이름 저장, `speaker_mappings`에 화자별 초기 레코드 저장
+    - **[🚧 향후 구현]**: 2가지 방식(이름 기반 + 역할 기반)의 LLM 추론 결과를 통합하여 전달
 
     ```python
+    # 현재 구현 (2025-11-18)
+    {
+      "detected_names": [
+        {
+          "id": 1,
+          "detected_name": "민서",
+          "speaker_label": "SPEAKER_01",
+          "time_detected": 36.17,
+          "context_before": [{"index": -5, "speaker": "SPEAKER_02", "text": "...", "time": 31.0}, ...],
+          "context_after": [{"index": 1, "speaker": "SPEAKER_04", "text": "...", "time": 38.0}, ...]
+        },
+        ...
+      ],
+      "speaker_mappings": [
+        {
+          "speaker_label": "SPEAKER_00",
+          "suggested_name": null,  // 초기에는 null (향후 LLM이 추론)
+          "name_confidence": null,
+          "name_mentions": 0,
+          "suggested_role": null,
+          "role_confidence": null,
+          "conflict_detected": false,
+          "needs_manual_review": true,  // 기본값: 사용자 확인 필요
+          "final_name": ""  // 사용자가 확정 전까지 빈 값
+        },
+        ...
+      ]
+    }
+
+    # 향후 구현 (LLM 추론 완료 후)
     {
       "tagging_method": "hybrid",  // "name_based", "role_based", "hybrid"
-      "detected_names": ["민서", "인서"],  // 방식 1에서 감지된 이름
+      "detected_names": ["민서", "인서"],  // DetectedName 테이블에서 추출
       "suggested_mappings": [
         {
           "label": "SPEAKER_00",
-          "suggested_name": "민서",  // 방식 1 결과 (이름)
-          "suggested_role": "진행자",  // 방식 2 결과 (역할)
+          "suggested_name": "민서",  // 멀티턴 LLM이 추론한 이름
+          "suggested_role": "진행자",  // 역할 기반 추론
           "name_confidence": 0.90,  // 멀티턴 LLM 최종 스코어
           "role_confidence": 0.92,
-          "name_mentions": 3,  // 이름이 언급된 횟수
-          "conflict_detected": false,  // 모순 발견 여부
-          "needs_manual_review": false,  // 수동 확인 필요 여부
-          "stats": {
-            "duration": 180.5,  // 총 발화 시간 (초)
-            "turn_count": 45    // 발화 횟수
-          }
-        },
-        {
-          "label": "SPEAKER_01",
-          "suggested_name": "인서",  // 이름 감지됨
-          "suggested_role": "발표자",  // 역할 추론됨
-          "name_confidence": 0.63,  // 낮은 신뢰도 (모순 발견)
-          "role_confidence": 0.85,
-          "name_mentions": 2,
-          "conflict_detected": true,  // ⚠️ 모순 발견!
-          "needs_manual_review": true,  // ⚠️ 사용자 확인 필요
-          "stats": {
-            "duration": 95.3,
-            "turn_count": 30
-          }
-        },
-        {
-          "label": "SPEAKER_02",
-          "suggested_name": null,  // 이름 감지 안됨
-          "suggested_role": "참여자",  // 역할만 추론됨
-          "name_confidence": null,
-          "role_confidence": 0.78,
-          "name_mentions": 0,
+          "name_mentions": 3,  // DetectedName 테이블에서 카운트
           "conflict_detected": false,
           "needs_manual_review": false,
           "stats": {
-            "duration": 50.1,
-            "turn_count": 15
+            "duration": 180.5,  // DiarizationResult에서 계산
+            "turn_count": 45
           }
-        }
+        },
+        ...
       ]
     }
     ```

@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import axios from 'axios'
-
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+import { getProcessingStatus } from '../services/api'
 
 export default function SpeakerInfoConfirmPage() {
   const { fileId } = useParams()
@@ -10,9 +8,10 @@ export default function SpeakerInfoConfirmPage() {
 
   const [loading, setLoading] = useState(true)
   const [speakerInfo, setSpeakerInfo] = useState(null)
-  const [speakerCount, setSpeakerCount] = useState(3)
+  const [speakerCount, setSpeakerCount] = useState(0)
   const [detectedNames, setDetectedNames] = useState([])
   const [isEditing, setIsEditing] = useState(false)
+  const [error, setError] = useState(null)
 
   useEffect(() => {
     fetchSpeakerInfo()
@@ -20,13 +19,30 @@ export default function SpeakerInfoConfirmPage() {
 
   const fetchSpeakerInfo = async () => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/api/v1/speaker-info/${fileId}`)
-      setSpeakerInfo(response.data)
-      setSpeakerCount(response.data.speaker_count)
-      setDetectedNames(response.data.detected_names)
+      setLoading(true)
+      // 처리 상태에서 화자 정보 가져오기
+      const status = await getProcessingStatus(fileId)
+
+      if (status.status !== 'completed') {
+        setError('아직 처리가 완료되지 않았습니다.')
+        setLoading(false)
+        return
+      }
+
+      // 화자 수와 감지된 이름 설정
+      const count = status.speaker_count || 0
+      const names = status.detected_names || []
+
+      setSpeakerInfo({
+        speaker_count: count,
+        detected_names: names
+      })
+      setSpeakerCount(count)
+      setDetectedNames(names)
       setLoading(false)
     } catch (error) {
       console.error('화자 정보 조회 실패:', error)
+      setError('화자 정보를 불러올 수 없습니다.')
       setLoading(false)
     }
   }
@@ -45,21 +61,14 @@ export default function SpeakerInfoConfirmPage() {
     setDetectedNames(updated)
   }
 
-  const handleConfirm = async () => {
-    try {
-      // 화자 정보 저장
-      await axios.post(`${API_BASE_URL}/api/v1/speaker-info/confirm`, {
-        file_id: fileId,
-        speaker_count: speakerCount,
-        detected_names: detectedNames.filter(name => name.trim() !== '')
-      })
-
-      // 다음 단계 (AI 분석 중 페이지)로 이동
-      navigate(`/analyzing/${fileId}`)
-    } catch (error) {
-      console.error('화자 정보 저장 실패:', error)
-      alert('화자 정보 저장에 실패했습니다. 다시 시도해주세요.')
-    }
+  const handleConfirm = () => {
+    // 화자 정보를 다음 페이지로 전달
+    navigate(`/analyzing/${fileId}`, {
+      state: {
+        speakerCount,
+        detectedNames: detectedNames.filter(name => name.trim() !== '')
+      }
+    })
   }
 
   if (loading) {
@@ -68,6 +77,23 @@ export default function SpeakerInfoConfirmPage() {
         <div className="text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-indigo-600 mx-auto"></div>
           <p className="mt-4 text-gray-600 dark:text-gray-300">화자 정보를 불러오는 중...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-950 dark:to-purple-950 transition-colors duration-300 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-red-600 text-6xl mb-4">⚠️</div>
+          <p className="text-xl text-gray-700 dark:text-gray-300 mb-4">{error}</p>
+          <button
+            onClick={() => navigate(`/processing/${fileId}`)}
+            className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition-colors"
+          >
+            처리 페이지로 돌아가기
+          </button>
         </div>
       </div>
     )
@@ -113,9 +139,9 @@ export default function SpeakerInfoConfirmPage() {
                     max="20"
                     value={speakerCount}
                     onChange={(e) => setSpeakerCount(parseInt(e.target.value) || 1)}
-                    className="w-20 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    className="w-20 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
                   />
-                  <span className="text-gray-700">명</span>
+                  <span className="text-gray-700 dark:text-gray-300">명</span>
                 </div>
               ) : (
                 <div className="text-4xl font-bold text-indigo-600">
@@ -124,7 +150,7 @@ export default function SpeakerInfoConfirmPage() {
               )}
             </div>
 
-            <p className="text-sm text-gray-500 mt-2">
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
               대화에 참여한 화자의 수입니다
             </p>
           </div>
@@ -147,9 +173,17 @@ export default function SpeakerInfoConfirmPage() {
 
             <div className="space-y-3">
               {detectedNames.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
+                <div className="text-center py-8 text-gray-500 dark:text-gray-400">
                   <p>감지된 이름이 없습니다</p>
                   <p className="text-sm mt-1">대화에서 이름이 언급되지 않았을 수 있습니다</p>
+                  {isEditing && (
+                    <button
+                      onClick={handleAddName}
+                      className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                    >
+                      이름 추가하기
+                    </button>
+                  )}
                 </div>
               ) : (
                 detectedNames.map((name, index) => (
@@ -161,17 +195,17 @@ export default function SpeakerInfoConfirmPage() {
                           value={name}
                           onChange={(e) => handleNameChange(index, e.target.value)}
                           placeholder="이름 입력"
-                          className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                          className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
                         />
                         <button
                           onClick={() => handleRemoveName(index)}
-                          className="px-3 py-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg"
+                          className="px-3 py-2 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"
                         >
                           삭제
                         </button>
                       </>
                     ) : (
-                      <div className="flex-1 px-4 py-2 bg-indigo-50 text-indigo-700 rounded-lg font-medium">
+                      <div className="flex-1 px-4 py-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded-lg font-medium">
                         {name}
                       </div>
                     )}
@@ -180,7 +214,7 @@ export default function SpeakerInfoConfirmPage() {
               )}
             </div>
 
-            <p className="text-sm text-gray-500 mt-4">
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-4">
               💡 대화에서 언급된 이름들입니다. 수정이 필요하면 위의 "수정하기" 버튼을 클릭하세요.
             </p>
           </div>
@@ -197,24 +231,14 @@ export default function SpeakerInfoConfirmPage() {
                   setDetectedNames(speakerInfo.detected_names)
                   setIsEditing(false)
                 }}
-                className="flex-1 px-6 py-3 bg-gray-200 text-gray-700 rounded-xl font-semibold hover:bg-gray-300 transition-colors"
+                className="flex-1 px-6 py-3 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-semibold hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
               >
                 취소
               </button>
               <button
-                onClick={async () => {
-                  // 수정 사항 저장
-                  try {
-                    await axios.post(`${API_BASE_URL}/api/v1/speaker-info/confirm`, {
-                      file_id: fileId,
-                      speaker_count: speakerCount,
-                      detected_names: detectedNames.filter(name => name.trim() !== '')
-                    })
-                    setIsEditing(false)
-                  } catch (error) {
-                    console.error('저장 실패:', error)
-                    alert('저장에 실패했습니다.')
-                  }
+                onClick={() => {
+                  // 수정 완료
+                  setIsEditing(false)
                 }}
                 className="flex-1 px-6 py-3 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200"
               >
@@ -232,8 +256,8 @@ export default function SpeakerInfoConfirmPage() {
         </div>
 
         {/* 안내 메시지 */}
-        <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-          <p className="text-sm text-blue-800">
+        <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+          <p className="text-sm text-blue-800 dark:text-blue-300">
             ℹ️ 다음 단계에서는 각 화자(SPEAKER_00, SPEAKER_01...)에게 실제 이름을 매핑합니다.
           </p>
         </div>

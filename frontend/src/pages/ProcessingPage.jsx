@@ -35,8 +35,11 @@ const ProcessingPage = () => {
               setProgress(50);
               setCurrentStep('STT 분석 중...');
             } else if (status.status === 'diarization') {
-              setProgress(75);
+              setProgress(70);
               setCurrentStep('화자 분리 중...');
+            } else if (status.status === 'ner') {
+              setProgress(80);
+              setCurrentStep('이름 추출 중...');
             } else if (status.status === 'saving') {
               setProgress(90);
               setCurrentStep('결과 저장 중...');
