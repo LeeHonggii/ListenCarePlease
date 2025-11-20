@@ -55,6 +55,10 @@ class SpeakerMapping(Base):
     suggested_role = Column(String(50), nullable=True)  # 시스템 제안 역할 (진행자, 발표자 등)
     role_confidence = Column(Float, nullable=True)  # 역할 추론 신뢰도
 
+    # 방식 3: 닉네임 태깅 (LLM 기반)
+    nickname = Column(String(100), nullable=True)  # LLM이 생성한 닉네임 (예: "진행 담당자", "기술 전문가")
+    nickname_metadata = Column(JSON, nullable=True)  # 닉네임 생성 메타데이터 (display_label, one_liner, keywords 등)
+
     # 품질 플래그
     conflict_detected = Column(Boolean, default=False, nullable=False)  # 모순 발견 여부
     needs_manual_review = Column(Boolean, default=False, nullable=False)  # 수동 확인 필요
@@ -78,4 +82,4 @@ class SpeakerMapping(Base):
     )
 
     def __repr__(self):
-        return f"<SpeakerMapping(id={self.id}, speaker={self.speaker_label}, name='{self.suggested_name}' (conf={self.name_confidence}), role='{self.suggested_role}' (conf={self.role_confidence}), final='{self.final_name}', conflict={self.conflict_detected})>"
+        return f"<SpeakerMapping(id={self.id}, speaker={self.speaker_label}, name='{self.suggested_name}' (conf={self.name_confidence}), nickname='{self.nickname}', role='{self.suggested_role}' (conf={self.role_confidence}), final='{self.final_name}', conflict={self.conflict_detected})>"

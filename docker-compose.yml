@@ -45,16 +45,17 @@ services:
     environment:
       - MYSQL_HOST=mysql
     shm_size: '4gb'  # Increase shared memory for large ML model loading
-    mem_limit: 12g  # Container memory limit (STT + Diarization)
-    mem_reservation: 8g  # Minimum guaranteed memory
-    # GPU 설정: NVIDIA GPU가 있는 환경에서만 아래 주석 해제
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: all
-    #           capabilities: [gpu]
+    # GPU 설정: NVIDIA GPU 사용
+    deploy:
+      resources:
+        limits:
+          memory: 12g
+        reservations:
+          memory: 8g
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
   # React Frontend
   frontend:

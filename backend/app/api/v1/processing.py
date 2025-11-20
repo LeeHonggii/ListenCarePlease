@@ -5,7 +5,7 @@
 """
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from pathlib import Path
-from typing import Dict
+from typing import Any, Dict
 from app.services.preprocessing import preprocess_audio
 from app.services.stt import run_stt_pipeline
 from app.services.diarization import run_diarization, merge_stt_with_diarization
@@ -14,11 +14,15 @@ from app.core.config import settings
 from app.core.device import get_device
 import json
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from app.api.deps import get_db
 from fastapi import Depends
 from app.models.audio_file import AudioFile
 from app.models.preprocessing import PreprocessingResult
 from app.models.stt import STTResult
+from app.models.diarization import DiarizationResult
+from app.models.tagging import DetectedName, SpeakerMapping
+from app.models.user_confirmation import UserConfirmation
 
 
 router = APIRouter()
@@ -167,21 +171,25 @@ def process_audio_pipeline(
             diarization_result = None
             merged_result = None
 
-        # 5) NER (이름 추출 및 군집화)
+        # 5) NER (이름 추출 및 군집화) + 닉네임 태깅 (동시 처리)
         PROCESSING_STATUS[file_id] = {
             "status": "ner",
-            "step": "이름 추출 중...",
+            "step": "이름 및 닉네임 추출 중...",
             "progress": 80,
         }
 
         ner_result = None
+        nickname_result = None
         try:
             if merged_result:
-                # NER 서비스 가져오기
+                # NER 서비스 가져오기 (이름과 닉네임을 함께 처리)
                 ner_service = get_ner_service()
 
-                # NER 처리
+                # NER 처리 (내부에서 닉네임도 함께 처리)
                 ner_result = ner_service.process_segments(merged_result)
+
+                # 닉네임 결과 추출
+                nickname_result = ner_result.get('nicknames', {})
 
                 # NER 결과 저장
                 ner_json = work_dir / "ner_result.json"
@@ -189,11 +197,14 @@ def process_audio_pipeline(
                     json.dump(ner_result, f, ensure_ascii=False, indent=2)
 
                 print(f"✅ NER 완료: {len(ner_result['final_namelist'])}개 대표명 추출")
+                if nickname_result:
+                    print(f"✅ 닉네임 태깅 완료: {len(nickname_result)}개 화자")
 
         except Exception as ner_error:
             print(f"⚠️ NER failed: {ner_error}")
             # NER 실패해도 병합 결과는 유지
             ner_result = None
+            nickname_result = None
 
         # 6) DB 저장
         PROCESSING_STATUS[file_id] = {
@@ -246,9 +257,9 @@ def process_audio_pipeline(
                         db.add(stt_record)
 
                 # 6-3) DiarizationResult 저장 (화자별 임베딩)
-                if diarization_result and 'segments' in diarization_result:
-                    for segment in diarization_result['segments']:
-                        speaker_label = segment.get('speaker', 'UNKNOWN')
+                if diarization_result and 'turns' in diarization_result:
+                    for segment in diarization_result['turns']:
+                        speaker_label = segment.get('speaker_label', 'UNKNOWN')
 
                         # 해당 화자의 임베딩 가져오기
                         embeddings = diarization_result.get('embeddings', {})
@@ -265,8 +276,6 @@ def process_audio_pipeline(
 
                 # 6-4) DetectedName 저장 (NER로 감지된 이름들 - has_name: true인 세그먼트)
                 if ner_result:
-                    from app.models.tagging import DetectedName
-
                     segments_with_names = ner_result.get('segments_with_names', [])
 
                     # 이름이 감지된 세그먼트들만 필터링
@@ -326,6 +335,9 @@ def process_audio_pipeline(
                         ).first()
 
                         if not existing:
+                            # 닉네임 정보 가져오기 (NER 결과에서)
+                            nickname_info = nickname_result.get(speaker_label) if nickname_result else None
+                            
                             mapping = SpeakerMapping(
                                 audio_file_id=audio_file_id_db,
                                 speaker_label=speaker_label,
@@ -334,12 +346,19 @@ def process_audio_pipeline(
                                 name_mentions=0,
                                 suggested_role=None,
                                 role_confidence=None,
+                                nickname=nickname_info.get('nickname') if nickname_info else None,
+                                nickname_metadata=nickname_info.get('nickname_metadata') if nickname_info else None,
                                 conflict_detected=False,
                                 needs_manual_review=True,  # 기본적으로 사용자 확인 필요
                                 final_name="",  # 사용자가 확정 전까지 빈 값
                                 is_modified=False
                             )
                             db.add(mapping)
+                        elif nickname_result and speaker_label in nickname_result:
+                            # 기존 레코드가 있으면 닉네임 정보만 업데이트 (NER 결과에서)
+                            nickname_info = nickname_result[speaker_label]
+                            existing.nickname = nickname_info.get('nickname')
+                            existing.nickname_metadata = nickname_info.get('nickname_metadata')
 
                 # 6-6) AudioFile 상태 업데이트
                 audio_file.status = FileStatus.COMPLETED
@@ -357,7 +376,7 @@ def process_audio_pipeline(
                 ).count()
                 print(f"  - DetectedName 레코드: {detected_name_count}개")
                 print(f"  - STTResult 레코드: {len(merged_result) if merged_result else 0}개")
-                print(f"  - DiarizationResult 레코드: {len(diarization_result.get('segments', [])) if diarization_result else 0}개")
+                print(f"  - DiarizationResult 레코드: {len(diarization_result.get('turns', [])) if diarization_result else 0}개")
                 print(f"  - SpeakerMapping 레코드: {speaker_mapping_count}개")
 
             except Exception as db_error:
@@ -436,6 +455,17 @@ async def start_processing(
     if use_whisper_mode == "api" and not settings.OPENAI_API_KEY:
         raise HTTPException(status_code=400, detail="OpenAI API 키가 설정되지 않았습니다. .env 파일을 확인하세요.")
 
+    # 중복 처리 방지: 이미 처리 중인 파일인지 확인
+    if file_id in PROCESSING_STATUS:
+        current_status = PROCESSING_STATUS[file_id].get("status")
+        if current_status not in ["completed", "failed"]:
+            # 이미 처리 중이면 현재 상태 반환
+            return {
+                "file_id": file_id,
+                "message": "이미 처리 중입니다.",
+                "status": PROCESSING_STATUS[file_id]
+            }
+
     # 디바이스 자동 감지
     detected_device = get_device()
 
@@ -470,9 +500,9 @@ async def start_processing(
 
 
 @router.get("/status/{file_id}")
-async def get_processing_status(file_id: str):
+async def get_processing_status(file_id: str, db: Session = Depends(get_db)):
     """
-    처리 상태 조회
+    처리 상태 조회 (메모리 또는 DB)
 
     Args:
         file_id: 파일 ID
@@ -480,10 +510,48 @@ async def get_processing_status(file_id: str):
     Returns:
         현재 처리 상태
     """
-    if file_id not in PROCESSING_STATUS:
+    # 메모리에 있으면 반환 (처리 중인 파일)
+    if file_id in PROCESSING_STATUS:
+        return PROCESSING_STATUS[file_id]
+
+    # DB에서 조회 (완료된 파일)
+    audio_file = db.query(AudioFile).filter(
+        (AudioFile.file_path.like(f"%{file_id}%")) |
+        (AudioFile.original_filename.like(f"%{file_id}%"))
+    ).first()
+
+    if not audio_file:
         raise HTTPException(status_code=404, detail="처리 정보를 찾을 수 없습니다.")
 
-    return PROCESSING_STATUS[file_id]
+    # 화자 수 조회
+    speaker_count = db.query(func.count(SpeakerMapping.id)).filter(
+        SpeakerMapping.audio_file_id == audio_file.id
+    ).scalar() or 0
+
+    # 감지된 이름 조회 (중복 제거)
+    detected_names_query = db.query(DetectedName.detected_name).filter(
+        DetectedName.audio_file_id == audio_file.id
+    ).distinct().all()
+    detected_names = [name[0] for name in detected_names_query]
+
+    # 닉네임 조회 (화자별 닉네임)
+    speaker_mappings = db.query(SpeakerMapping).filter(
+        SpeakerMapping.audio_file_id == audio_file.id
+    ).all()
+    detected_nicknames = []
+    for mapping in speaker_mappings:
+        if mapping.nickname:
+            detected_nicknames.append(mapping.nickname)
+
+    # 완료된 파일의 상태 반환
+    return {
+        "status": audio_file.status.value if audio_file.status else "unknown",
+        "step": "완료" if audio_file.status.value == "COMPLETED" else "처리 중",
+        "progress": 100 if audio_file.status.value == "COMPLETED" else 0,
+        "speaker_count": speaker_count,
+        "detected_names": detected_names,
+        "detected_nicknames": detected_nicknames,  # 닉네임 추가
+    }
 
 
 @router.get("/transcript/{file_id}")
@@ -552,10 +620,53 @@ async def get_ner_result(file_id: str):
     }
 
 
-@router.get("/merged/{file_id}")
-async def get_merged_result(file_id: str):
+@router.get("/files")
+async def get_processed_files(db: Session = Depends(get_db)):
     """
-    병합된 결과 조회 (STT + Diarization + NER)
+    처리된 파일 목록 조회
+
+    Returns:
+        처리된 파일들의 목록 (최근순)
+    """
+    files = db.query(AudioFile).order_by(AudioFile.created_at.desc()).limit(20).all()
+
+    result = []
+    for f in files:
+        # 각 파일의 통계 정보
+        stt_count = db.query(func.count(STTResult.id)).filter(
+            STTResult.audio_file_id == f.id
+        ).scalar() or 0
+
+        diar_count = db.query(func.count(DiarizationResult.id)).filter(
+            DiarizationResult.audio_file_id == f.id
+        ).scalar() or 0
+
+        name_count = db.query(func.count(DetectedName.id)).filter(
+            DetectedName.audio_file_id == f.id
+        ).scalar() or 0
+
+        # file_path에서 file_id 추출 (UUID 부분)
+        file_id = Path(f.file_path).stem if f.file_path else f"file_{f.id}"
+
+        result.append({
+            "id": f.id,
+            "file_id": file_id,
+            "filename": f.original_filename,
+            "status": f.status.value if f.status else "unknown",
+            "created_at": f.created_at.isoformat() if f.created_at else None,
+            "duration": f.duration,
+            "stt_segments": stt_count,
+            "diarization_segments": diar_count,
+            "detected_names": name_count
+        })
+
+    return {"files": result, "total": len(result)}
+
+
+@router.get("/merged/{file_id}")
+async def get_merged_result(file_id: str, db: Session = Depends(get_db)):
+    """
+    병합된 결과 조회 (STT + Diarization + NER) - DB 우선, 메모리 폴백
 
     Args:
         file_id: 파일 ID
@@ -563,6 +674,61 @@ async def get_merged_result(file_id: str):
     Returns:
         화자 정보와 이름이 포함된 전사 결과
     """
+    # 1. DB에서 조회 시도
+    audio_file = db.query(AudioFile).filter(
+        (AudioFile.file_path.like(f"%{file_id}%")) |
+        (AudioFile.original_filename.like(f"%{file_id}%"))
+    ).first()
+
+    if audio_file:
+        # STT 결과 조회 (시간순 정렬)
+        stt_results = db.query(STTResult).filter(
+            STTResult.audio_file_id == audio_file.id
+        ).order_by(STTResult.start_time).all()
+
+        # Diarization 결과를 딕셔너리로 변환 (시간대별 화자 매핑)
+        diar_results = db.query(DiarizationResult).filter(
+            DiarizationResult.audio_file_id == audio_file.id
+        ).order_by(DiarizationResult.start_time).all()
+
+        # STT와 Diarization 병합
+        merged_segments = []
+        for stt in stt_results:
+            # 해당 STT 시간대에 겹치는 화자 찾기
+            speaker_label = "UNKNOWN"
+            for diar in diar_results:
+                # STT 시작 시간이 화자 구간 안에 있으면
+                if diar.start_time <= stt.start_time < diar.end_time:
+                    speaker_label = diar.speaker_label
+                    break
+
+            merged_segments.append({
+                "speaker": speaker_label,
+                "start": stt.start_time,
+                "end": stt.end_time,
+                "text": stt.text
+            })
+
+        # 감지된 이름 조회
+        detected_names = db.query(DetectedName.detected_name).filter(
+            DetectedName.audio_file_id == audio_file.id
+        ).distinct().all()
+        detected_names_list = [name[0] for name in detected_names]
+
+        # 화자 수 조회
+        speaker_count = db.query(func.count(SpeakerMapping.id.distinct())).filter(
+            SpeakerMapping.audio_file_id == audio_file.id
+        ).scalar() or 0
+
+        return {
+            "file_id": file_id,
+            "segments": merged_segments,
+            "total_segments": len(merged_segments),
+            "detected_names": detected_names_list,
+            "speaker_count": speaker_count,
+        }
+
+    # 2. 메모리에서 조회 (폴백)
     if file_id not in PROCESSING_STATUS:
         raise HTTPException(status_code=404, detail="처리 정보를 찾을 수 없습니다.")
 
@@ -591,4 +757,113 @@ async def get_merged_result(file_id: str):
         "total_segments": len(segments),
         "detected_names": status.get("detected_names", []),
         "speaker_count": status.get("speaker_count", 0),
+    }
+
+
+@router.get("/export/{file_id}")
+async def export_merged_json(file_id: str, db: Session = Depends(get_db)):
+    """
+    병합된 결과를 JSON 파일로 내보내기
+
+    Args:
+        file_id: 파일 ID
+
+    Returns:
+        저장된 JSON 파일 경로
+    """
+    # get_merged_result와 동일한 로직으로 데이터 조회
+    audio_file = db.query(AudioFile).filter(
+        (AudioFile.file_path.like(f"%{file_id}%")) |
+        (AudioFile.original_filename.like(f"%{file_id}%"))
+    ).first()
+
+    if not audio_file:
+        raise HTTPException(status_code=404, detail="파일을 찾을 수 없습니다.")
+
+    # STT 결과 조회
+    stt_results = db.query(STTResult).filter(
+        STTResult.audio_file_id == audio_file.id
+    ).order_by(STTResult.start_time).all()
+
+    # Diarization 결과 조회
+    diar_results = db.query(DiarizationResult).filter(
+        DiarizationResult.audio_file_id == audio_file.id
+    ).order_by(DiarizationResult.start_time).all()
+
+    # 화자별 임베딩 수집 (각 화자의 첫 번째 레코드에서 가져오기)
+    speaker_embeddings = {}
+    for diar in diar_results:
+        if diar.speaker_label not in speaker_embeddings and diar.embedding:
+            speaker_embeddings[diar.speaker_label] = diar.embedding
+
+    # STT와 Diarization 병합
+    merged_segments = []
+    for stt in stt_results:
+        speaker_label = "UNKNOWN"
+        for diar in diar_results:
+            if diar.start_time <= stt.start_time < diar.end_time:
+                speaker_label = diar.speaker_label
+                break
+
+        merged_segments.append({
+            "speaker": speaker_label,
+            "start": stt.start_time,
+            "end": stt.end_time,
+            "text": stt.text
+        })
+
+    # 감지된 이름 조회
+    detected_names = db.query(DetectedName.detected_name).filter(
+        DetectedName.audio_file_id == audio_file.id
+    ).distinct().all()
+    detected_names_list = [name[0] for name in detected_names]
+
+    # 화자 매핑 조회
+    speaker_mappings = db.query(SpeakerMapping).filter(
+        SpeakerMapping.audio_file_id == audio_file.id
+    ).all()
+    speaker_mapping_dict = {sm.speaker_label: sm.final_name for sm in speaker_mappings}
+
+    # 사용자 확정 정보 조회
+    user_confirmation = db.query(UserConfirmation).filter(
+        UserConfirmation.audio_file_id == audio_file.id
+    ).first()
+
+    # 전체 결과 구성
+    export_data = {
+        "file_info": {
+            "file_id": file_id,
+            "original_filename": audio_file.original_filename,
+            "duration": audio_file.duration,
+            "created_at": audio_file.created_at.isoformat() if audio_file.created_at else None,
+        },
+        "speaker_info": {
+            "speaker_count": len(set(seg["speaker"] for seg in merged_segments)),
+            "detected_names": detected_names_list,
+            "speaker_mappings": speaker_mapping_dict,
+            "embeddings": speaker_embeddings,  # 화자별 임베딩 벡터
+        },
+        "user_confirmation": {
+            "confirmed_speaker_count": user_confirmation.confirmed_speaker_count if user_confirmation else None,
+            "confirmed_names": user_confirmation.confirmed_names if user_confirmation else None,
+        },
+        "segments": merged_segments,
+        "total_segments": len(merged_segments),
+    }
+
+    # JSON 파일로 저장
+    export_dir = Path("/app/uploads/exports")
+    export_dir.mkdir(exist_ok=True, parents=True)
+
+    export_filename = f"{file_id}_merged.json"
+    export_path = export_dir / export_filename
+
+    with open(export_path, 'w', encoding='utf-8') as f:
+        json.dump(export_data, f, ensure_ascii=False, indent=2)
+
+    return {
+        "message": "JSON 파일 생성 완료",
+        "file_path": str(export_path),
+        "file_name": export_filename,
+        "total_segments": len(merged_segments),
     }

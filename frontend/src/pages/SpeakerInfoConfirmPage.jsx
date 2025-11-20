@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getProcessingStatus } from '../services/api'
+import { getProcessingStatus, confirmSpeakerInfo } from '../services/api'
 
 export default function SpeakerInfoConfirmPage() {
   const { fileId } = useParams()
@@ -10,6 +10,7 @@ export default function SpeakerInfoConfirmPage() {
   const [speakerInfo, setSpeakerInfo] = useState(null)
   const [speakerCount, setSpeakerCount] = useState(0)
   const [detectedNames, setDetectedNames] = useState([])
+  const [detectedNicknames, setDetectedNicknames] = useState([])
   const [isEditing, setIsEditing] = useState(false)
   const [error, setError] = useState(null)
 
@@ -29,16 +30,19 @@ export default function SpeakerInfoConfirmPage() {
         return
       }
 
-      // 화자 수와 감지된 이름 설정
+      // 화자 수와 감지된 이름, 닉네임 설정
       const count = status.speaker_count || 0
       const names = status.detected_names || []
+      const nicknames = status.detected_nicknames || []
 
       setSpeakerInfo({
         speaker_count: count,
-        detected_names: names
+        detected_names: names,
+        detected_nicknames: nicknames
       })
       setSpeakerCount(count)
       setDetectedNames(names)
+      setDetectedNicknames(nicknames)
       setLoading(false)
     } catch (error) {
       console.error('화자 정보 조회 실패:', error)
@@ -61,14 +65,44 @@ export default function SpeakerInfoConfirmPage() {
     setDetectedNames(updated)
   }
 
-  const handleConfirm = () => {
-    // 화자 정보를 다음 페이지로 전달
-    navigate(`/analyzing/${fileId}`, {
-      state: {
-        speakerCount,
-        detectedNames: detectedNames.filter(name => name.trim() !== '')
-      }
-    })
+  const handleAddNickname = () => {
+    setDetectedNicknames([...detectedNicknames, ''])
+  }
+
+  const handleRemoveNickname = (index) => {
+    setDetectedNicknames(detectedNicknames.filter((_, i) => i !== index))
+  }
+
+  const handleNicknameChange = (index, value) => {
+    const updated = [...detectedNicknames]
+    updated[index] = value
+    setDetectedNicknames(updated)
+  }
+
+  const handleConfirm = async () => {
+    try {
+      setLoading(true)
+
+      // 빈 이름/닉네임 제거
+      const validNames = detectedNames.filter(name => name.trim() !== '')
+      const validNicknames = detectedNicknames.filter(nickname => nickname.trim() !== '')
+
+      // DB에 사용자 확정 정보 저장
+      await confirmSpeakerInfo(fileId, speakerCount, validNames, validNicknames)
+
+      // 화자 정보를 다음 페이지로 전달
+      navigate(`/analyzing/${fileId}`, {
+        state: {
+          speakerCount,
+          detectedNames: validNames
+        }
+      })
+    } catch (error) {
+      console.error('화자 정보 저장 실패:', error)
+      const errorMessage = error.response?.data?.detail || error.message || '화자 정보를 저장하는 중 오류가 발생했습니다.'
+      setError(errorMessage)
+      setLoading(false)
+    }
   }
 
   if (loading) {
@@ -156,7 +190,7 @@ export default function SpeakerInfoConfirmPage() {
           </div>
 
           {/* 감지된 이름 섹션 */}
-          <div>
+          <div className="mb-8 pb-8 border-b border-gray-200 dark:border-gray-700">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
                 👥 감지된 이름
@@ -218,6 +252,70 @@ export default function SpeakerInfoConfirmPage() {
               💡 대화에서 언급된 이름들입니다. 수정이 필요하면 위의 "수정하기" 버튼을 클릭하세요.
             </p>
           </div>
+
+          {/* 감지된 닉네임 섹션 */}
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                🏷️ 감지된 닉네임
+              </h2>
+              {isEditing && (
+                <button
+                  onClick={handleAddNickname}
+                  className="text-sm text-purple-600 hover:text-purple-700 font-medium"
+                >
+                  + 닉네임 추가
+                </button>
+              )}
+            </div>
+
+            <div className="space-y-3">
+              {detectedNicknames.length === 0 ? (
+                <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                  <p>감지된 닉네임이 없습니다</p>
+                  <p className="text-sm mt-1">대화에서 역할이나 특징이 명확하지 않을 수 있습니다</p>
+                  {isEditing && (
+                    <button
+                      onClick={handleAddNickname}
+                      className="mt-4 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+                    >
+                      닉네임 추가하기
+                    </button>
+                  )}
+                </div>
+              ) : (
+                detectedNicknames.map((nickname, index) => (
+                  <div key={index} className="flex items-center gap-3">
+                    {isEditing ? (
+                      <>
+                        <input
+                          type="text"
+                          value={nickname}
+                          onChange={(e) => handleNicknameChange(index, e.target.value)}
+                          placeholder="닉네임 입력"
+                          className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                        />
+                        <button
+                          onClick={() => handleRemoveNickname(index)}
+                          className="px-3 py-2 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"
+                        >
+                          삭제
+                        </button>
+                      </>
+                    ) : (
+                      <div className="flex-1 px-4 py-2 bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-lg font-medium">
+                        {nickname}
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-4">
+              💡 시스템이 분석한 화자별 역할이나 특징입니다. 수정이 필요하면 위의 "수정하기" 버튼을 클릭하세요.
+            </p>
+          </div>
         </div>
 
         {/* 액션 버튼 */}
@@ -229,6 +327,7 @@ export default function SpeakerInfoConfirmPage() {
                   // 원래 값으로 복구
                   setSpeakerCount(speakerInfo.speaker_count)
                   setDetectedNames(speakerInfo.detected_names)
+                  setDetectedNicknames(speakerInfo.detected_nicknames || [])
                   setIsEditing(false)
                 }}
                 className="flex-1 px-6 py-3 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-semibold hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"

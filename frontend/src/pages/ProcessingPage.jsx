@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { startProcessing, getProcessingStatus } from '../services/api';
 
@@ -9,12 +9,19 @@ const ProcessingPage = () => {
   const [progress, setProgress] = useState(0);
   const [currentStep, setCurrentStep] = useState('처리 시작 중...');
   const [error, setError] = useState(null);
+  const hasStartedProcessing = useRef(false);
 
   // 네비게이션 state에서 모드 정보 가져오기
   const whisperMode = location.state?.whisperMode || 'local';
   const diarizationMode = location.state?.diarizationMode || 'senko';
 
   useEffect(() => {
+    // 이미 처리가 시작되었으면 중복 실행 방지
+    if (hasStartedProcessing.current) {
+      return;
+    }
+    hasStartedProcessing.current = true;
+
     let pollingInterval = null;
 
     const initiateProcessing = async () => {
@@ -39,7 +46,7 @@ const ProcessingPage = () => {
               setCurrentStep('화자 분리 중...');
             } else if (status.status === 'ner') {
               setProgress(80);
-              setCurrentStep('이름 추출 중...');
+              setCurrentStep(status.step || '이름 및 닉네임 추출 중...');
             } else if (status.status === 'saving') {
               setProgress(90);
               setCurrentStep('결과 저장 중...');

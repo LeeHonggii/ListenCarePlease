@@ -7,7 +7,11 @@
       "Bash(python:*)",
       "Bash(docker-compose build:*)",
       "Bash(docker cp:*)",
-      "Bash(docker restart:*)"
+      "Bash(docker restart:*)",
+      "Bash(cat:*)",
+      "Bash(docker ps:*)",
+      "Bash(docker-compose down:*)",
+      "Bash(docker start:*)"
     ],
     "deny": [],
     "ask": []

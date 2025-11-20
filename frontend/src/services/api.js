@@ -30,6 +30,12 @@ export const getFileStatus = async (fileId) => {
   return response.data;
 };
 
+// 처리된 파일 목록 조회
+export const getProcessedFiles = async () => {
+  const response = await api.get('/api/v1/files');
+  return response.data;
+};
+
 // 파일 삭제
 export const deleteFile = async (fileId) => {
   const response = await api.delete(`/api/v1/files/${fileId}`);
@@ -67,6 +73,44 @@ export const getNERResult = async (fileId) => {
 // 병합된 결과 조회 (STT + Diarization + NER)
 export const getMergedResult = async (fileId) => {
   const response = await api.get(`/api/v1/merged/${fileId}`);
+  return response.data;
+};
+
+// 화자 정보 확정 (사용자가 수정한 화자 수 및 이름, 닉네임 저장)
+export const confirmSpeakerInfo = async (fileId, speakerCount, detectedNames, detectedNicknames = []) => {
+  const response = await api.post('/api/v1/tagging/speaker-info/confirm', {
+    file_id: fileId,
+    speaker_count: speakerCount,
+    detected_names: detectedNames,
+    detected_nicknames: detectedNicknames
+  });
+  return response.data;
+};
+
+// 화자 태깅 분석 시작 (Agent 실행)
+export const analyzeTagging = async (fileId) => {
+  const response = await api.post(`/api/v1/tagging/analyze/${fileId}`);
+  return response.data;
+};
+
+// 화자 태깅 제안 조회
+export const getTaggingSuggestion = async (fileId) => {
+  const response = await api.get(`/api/v1/tagging/${fileId}`);
+  return response.data;
+};
+
+// 화자 태깅 확정
+export const confirmTagging = async (fileId, mappings) => {
+  const response = await api.post('/api/v1/tagging/confirm', {
+    file_id: fileId,
+    mappings: mappings
+  });
+  return response.data;
+};
+
+// 태깅 결과 조회
+export const getTaggingResult = async (fileId) => {
+  const response = await api.get(`/api/v1/tagging/${fileId}/result`);
   return response.data;
 };
 

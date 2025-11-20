@@ -130,11 +130,18 @@ export default function TaggingPageNew() {
                 <div key={mapping.speaker_label} className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="text-lg font-bold text-gray-900 dark:text-white">{mapping.speaker_label}</h3>
-                    {mapping.suggested_name && (
-                      <span className="text-xs bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-200 px-3 py-1 rounded-full">
-                        제안: {mapping.suggested_name}
-                      </span>
-                    )}
+                    <div className="flex gap-2">
+                      {mapping.nickname && (
+                        <span className="text-xs bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-200 px-3 py-1 rounded-full">
+                          {mapping.nickname}
+                        </span>
+                      )}
+                      {mapping.suggested_name && (
+                        <span className="text-xs bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-200 px-3 py-1 rounded-full">
+                          제안: {mapping.suggested_name}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   <input

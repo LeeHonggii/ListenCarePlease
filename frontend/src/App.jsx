@@ -13,11 +13,15 @@ import SpeakerInfoConfirmPage from './pages/SpeakerInfoConfirmPage'
 import TaggingAnalyzingPage from './pages/TaggingAnalyzingPage'
 import TaggingPageNew from './pages/TaggingPageNew'
 import ResultPageNew from './pages/ResultPageNew'
+import TestLatestPage from './pages/TestLatestPage'
 
 function App() {
   return (
     <ThemeProvider>
-      <Router>
+      <Router future={{ 
+        v7_relativeSplatPath: true,
+        v7_startTransition: true 
+      }}>
         <AuthProvider>
           <ThemeToggle />
           <div className="min-h-screen">
@@ -26,6 +30,7 @@ function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
+            <Route path="/test-latest" element={<TestLatestPage />} />
 
             {/* 보호된 라우트 */}
             <Route

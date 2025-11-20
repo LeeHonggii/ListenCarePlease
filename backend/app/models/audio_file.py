@@ -41,6 +41,7 @@ class AudioFile(Base):
     diarization_results = relationship("DiarizationResult", back_populates="audio_file", cascade="all, delete-orphan")
     detected_names = relationship("DetectedName", back_populates="audio_file", cascade="all, delete-orphan")
     speaker_mappings = relationship("SpeakerMapping", back_populates="audio_file", cascade="all, delete-orphan")
+    user_confirmation = relationship("UserConfirmation", back_populates="audio_file", uselist=False, cascade="all, delete-orphan")
     final_transcripts = relationship("FinalTranscript", back_populates="audio_file", cascade="all, delete-orphan")
     summaries = relationship("Summary", back_populates="audio_file", cascade="all, delete-orphan")
 

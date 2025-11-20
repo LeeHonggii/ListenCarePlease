@@ -1,6 +1,7 @@
 """
 NER (Named Entity Recognition) Service
 이름 추출 및 군집화를 담당하는 서비스
+닉네임 태깅도 함께 처리
 """
 import logging
 from typing import List, Dict, Optional, Set
@@ -142,6 +143,7 @@ class NERService:
     ) -> Dict:
         """
         STT 세그먼트에서 이름 추출 및 군집화 수행
+        닉네임 태깅도 함께 처리
 
         Args:
             segments: [{"text": str, "start": float, "end": float, "speaker": str}, ...]
@@ -153,6 +155,7 @@ class NERService:
                 "final_namelist": [...],        # 최종 대표명 목록
                 "unique_names": [...],          # 중복 제거된 모든 이름
                 "name_found_count": int,        # 이름이 발견된 세그먼트 수
+                "nicknames": {...},             # 화자별 닉네임 {speaker_label: {nickname, nickname_metadata}}
                 "stats": {...}                  # 통계 정보
             }
         """
@@ -224,6 +227,18 @@ class NERService:
             final_namelist = []
             logger.info("추출된 이름 없음")
 
+        # 닉네임 태깅 처리 (이름과 함께 처리)
+        logger.info("닉네임 태깅 시작...")
+        nickname_result = {}
+        try:
+            from app.services.nickname_service import get_nickname_service
+            nickname_service = get_nickname_service()
+            nickname_result = nickname_service.process_speakers_for_nicknames(segments)
+            logger.info(f"✓ 닉네임 태깅 완료: {len(nickname_result)}개 화자")
+        except Exception as nickname_error:
+            logger.warning(f"⚠️ 닉네임 태깅 실패 (계속 진행): {nickname_error}")
+            nickname_result = {}
+
         # 통계 계산
         name_found_count = sum(1 for seg in segments_with_names if seg['has_name'])
 
@@ -233,6 +248,7 @@ class NERService:
             "final_namelist": final_namelist,
             "unique_names": unique_names,
             "name_found_count": name_found_count,
+            "nicknames": nickname_result,  # 닉네임 결과 추가
             "stats": {
                 "total_segments": len(segments),
                 "segments_with_names": name_found_count,
@@ -246,7 +262,8 @@ class NERService:
         logger.info(
             f"✓ NER 처리 완료: "
             f"{name_found_count}/{len(segments)}개 세그먼트에서 이름 발견 "
-            f"({result['stats']['percentage']:.1f}%)"
+            f"({result['stats']['percentage']:.1f}%), "
+            f"닉네임 {len(nickname_result)}개"
         )
 
         return result

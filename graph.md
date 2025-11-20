@@ -620,3 +620,331 @@ os.environ["LANGCHAIN_PROJECT"] = "speaker-tagging-agent"
 - ✅ **교차 검증**: 두 방식 결과 비교하여 신뢰도 상승
 - ✅ **자동 매칭**: 임베딩 유사도 높으면 DB 프로필로 즉시 매칭
 - ✅ **LangSmith**: 전체 과정 추적 및 디버깅
+
+---
+
+## 구현 계획 (2025-11-19)
+
+### 현재 구현 상태
+
+**완료된 부분:**
+1. **데이터 파이프라인**: STT + Diarization + NER 처리 완료
+2. **DB 저장**: 
+   - `STTResult`: 전사 텍스트 (text, start_time, end_time)
+   - `DiarizationResult`: 화자 구간 + 임베딩 벡터 (speaker_label, embedding)
+   - `DetectedName`: 감지된 이름 + 앞뒤 5문장 context (detected_name, context_before, context_after) - **NER 결과**
+   - `SpeakerMapping`: 화자별 초기 레코드 (suggested_name=None, final_name="")
+3. **Export 기능**: 임베딩 포함 결과 export 완료
+
+**미구현 부분:**
+- LangGraph Agent 파이프라인
+- Tools (VoiceSimilarity, TextSimilarity)
+- Agent Nodes (5개: load_profiles, embedding_match, name_extraction, name_based_tagging, merge_results)
+- LLM 통합 (멀티턴 추론)
+- 화자 프로필 DB 테이블 (user_speaker_profiles) - 나중에 추가
+
+---
+
+### 구현 단계
+
+#### Phase 1: DB 데이터를 AgentState로 변환
+
+**목표**: 이미 DB에 저장된 데이터를 AgentState 형식으로 변환
+
+**파일**: `backend/app/services/agent_data_loader.py` (신규 생성)
+
+**구현 내용**:
+```python
+def load_agent_input_data(audio_file_id: int, db: Session) -> Dict:
+    """
+    기존 DB 데이터를 AgentState 입력 형식으로 변환
+    (processing.py의 get_merged_result 로직 재사용)
+    
+    Returns:
+        {
+            "stt_result": [{"text": str, "start": float, "end": float, "speaker": str, "has_name": bool}, ...],
+            "diar_result": {"embeddings": {speaker_label: [vector]}, "turns": [...]},
+            "name_mentions": [{"name": str, "context_before": [...], "context_after": [...]}, ...]
+        }
+    """
+    # 1. STTResult + DiarizationResult 조회 (get_merged_result 로직 재사용)
+    # 2. DetectedName 조회하여 name_mentions 구성 (context_before/after 이미 DB에 있음)
+    # 3. has_name 플래그 설정 (DetectedName과 매칭)
+    # 4. 화자별 임베딩 수집 (DiarizationResult.embedding 활용)
+```
+
+**참고**: `backend/app/api/v1/processing.py`의 `get_merged_result` 함수 로직 재사용
+
+---
+
+#### Phase 2: Tools 구현 (2개)
+
+**목표**: Agent에서 사용할 Tools 구현 (프로필 관련 제외)
+
+**파일**: `backend/app/agents/tools/` (디렉토리 신규 생성)
+
+##### 2-1. VoiceSimilarityTool
+**파일**: `backend/app/agents/tools/voice_similarity_tool.py`
+```python
+@tool
+async def calculate_voice_similarity(
+    new_embedding: List[float],
+    stored_profiles: List[Dict]
+) -> Dict:
+    """코사인 유사도 계산 (numpy 사용)"""
+    # 임계값 0.85 이상이면 매칭 성공
+    # 프로필 없으면 빈 리스트 반환
+```
+
+##### 2-2. TextSimilarityTool
+**파일**: `backend/app/agents/tools/text_similarity_tool.py`
+```python
+@tool
+async def calculate_text_similarity(
+    current_utterances: List[str],
+    stored_profiles: List[Dict]
+) -> Dict:
+    """텍스트 임베딩 유사도 계산"""
+    # OpenAI text-embedding-3-small 또는 sentence-transformers 사용
+    # 임계값 0.85 이상이면 매칭 성공
+    # 프로필 없으면 빈 리스트 반환
+```
+
+**참고**: LoadProfilesTool, SaveSpeakerProfileTool은 프로필 테이블 추가 후 구현
+
+---
+
+#### Phase 3: Agent Nodes 구현 (5개, role_based 제외)
+
+**목표**: Graph의 5개 노드 구현 (name_based 중심)
+
+**파일**: `backend/app/agents/nodes/` (디렉토리 신규 생성)
+
+##### 3-1. load_profiles_node
+**파일**: `backend/app/agents/nodes/load_profiles.py`
+- 프로필 테이블 없으므로 빈 리스트 반환
+- state["previous_profiles"] = []
+
+##### 3-2. embedding_match_node
+**파일**: `backend/app/agents/nodes/embedding_match.py`
+- VoiceSimilarityTool, TextSimilarityTool 호출
+- 프로필 없으면 스킵 (auto_matched = {})
+- state["auto_matched"] 설정
+
+##### 3-3. name_extraction_node
+**파일**: `backend/app/agents/nodes/name_extraction.py`
+- **DetectedName 데이터 활용** (NER 결과)
+- context_before/after는 이미 DB에 저장되어 있음
+- state["name_mentions"] 구성
+- state["speaker_utterances"] 구성 (화자별 발화 그룹화)
+
+##### 3-4. name_based_tagging_node
+**파일**: `backend/app/agents/nodes/name_based_tagging.py`
+- **LangChain + OpenAI GPT-4 호출** (대화흐름.ipynb 로직 재사용)
+- **DetectedName의 context_before/after 활용**
+- **멀티턴 추론**: mapping_history를 유지하며 이전 분석 결과 기억
+- **PydanticOutputParser**: 구조화된 응답 파싱 (SpeakerMappingResult)
+- **일관성 확인**: 같은 이름이 여러 번 언급된 경우 이전 매핑과 일치 여부 확인
+- state["name_based_results"] 설정
+
+**구현 참고 (대화흐름.ipynb)**:
+```python
+class SpeakerMappingResult(BaseModel):
+    speaker: str
+    name: str
+    confidence: float
+    reasoning: str
+
+class LangChainSpeakerMapper:
+    def __init__(self, llm, participant_names: List[str]):
+        self.llm = llm
+        self.participant_names = participant_names
+        self.mapping_history = []  # 이전 분석 결과 저장
+
+    def analyze_v_context(self, context, target, turn_num):
+        # 이전 분석 요약 포함
+        history_summary = self._get_recent_history()
+        
+        # LLM 호출 (context_before/after 활용)
+        response = self.llm.invoke(messages)
+        result = output_parser.parse(response.content)
+        
+        # mapping_history에 추가
+        self.mapping_history.append(result)
+        return result
+```
+
+##### 3-5. merge_results_node
+**파일**: `backend/app/agents/nodes/merge_results.py`
+- name_based_results만 통합 (role_based 제외)
+- **중복 제거**: 같은 이름이 여러 Speaker에 매핑된 경우 가장 확실한 것만 선택
+- **소거법 적용**: 매핑되지 않은 Speaker와 남은 이름이 1:1일 때 자동 매핑 (신뢰도 0.50)
+- 신뢰도 계산 및 needs_manual_review 플래그 설정
+- state["final_mappings"] 설정
+
+**구현 참고 (대화흐름.ipynb)**:
+```python
+def apply_elimination_method(mapping, all_speakers, participant_names, transcript):
+    # 1. 중복 이름 제거 (같은 이름이 여러 Speaker에 매핑된 경우)
+    # 2. 소거법 적용 (남은 Speaker = 남은 이름이 1:1일 때)
+    # 3. 발화 횟수 확인 (최소 3회 이상)
+```
+
+**참고**: 
+- role_based_tagging_node는 나중에 구현
+- save_profiles_node는 프로필 테이블 추가 후 구현
+
+---
+
+#### Phase 4: LangGraph StateGraph 구성
+
+**목표**: 노드들을 연결하여 Graph 구성 (role_based 경로 제외)
+
+**파일**: `backend/app/agents/graph.py` (신규 생성)
+
+**구현 내용**:
+```python
+from langgraph.graph import StateGraph, END
+from typing import TypedDict
+
+class AgentState(TypedDict):
+    # State 정의 (위 참조)
+    ...
+
+# Graph 생성
+graph = StateGraph(AgentState)
+graph.add_node("load_profiles", load_profiles_node)
+graph.add_node("embedding_match", embedding_match_node)
+graph.add_node("name_extraction", name_extraction_node)
+graph.add_node("name_based_tagging", name_based_tagging_node)
+graph.add_node("merge_results", merge_results_node)
+
+# 엣지 설정
+graph.add_edge("load_profiles", "embedding_match")
+graph.add_edge("embedding_match", "name_extraction")
+graph.add_edge("name_extraction", "name_based_tagging")
+graph.add_edge("name_based_tagging", "merge_results")
+graph.add_edge("merge_results", END)
+
+# 진입점 설정
+graph.set_entry_point("load_profiles")
+
+# 컴파일
+app = graph.compile()
+```
+
+---
+
+#### Phase 5: FastAPI 통합
+
+**목표**: Agent를 API 엔드포인트에 통합
+
+**파일**: `backend/app/api/v1/tagging.py` 수정
+
+**구현 내용**:
+```python
+@router.post("/tagging/analyze/{file_id}")
+async def analyze_speakers(
+    file_id: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    LangGraph Agent 실행 (백그라운드)
+    """
+    # 1. DB에서 데이터 로드 (agent_data_loader 사용)
+    # 2. AgentState 구성
+    # 3. Agent 실행 (백그라운드)
+    # 4. 결과를 SpeakerMapping 테이블에 저장
+```
+
+**결과 저장**:
+- `SpeakerMapping.suggested_name` 업데이트
+- `SpeakerMapping.name_confidence` 업데이트
+- `SpeakerMapping.name_mentions` 업데이트 (DetectedName 개수)
+- `SpeakerMapping.needs_manual_review` 업데이트
+
+---
+
+#### Phase 6: LLM 프롬프트 최적화
+
+**목표**: OpenAI GPT-4 통합 및 이름 기반 프롬프트 작성
+
+**파일**: 
+- `backend/app/agents/prompts/` (디렉토리 신규 생성)
+- `backend/app/agents/prompts/name_based_prompt.py`
+
+**LLM 설정**:
+- OpenAI API 키 설정 확인
+- 모델: gpt-4 또는 gpt-4-turbo-preview
+- Temperature: 0.3 (일관성 유지)
+
+**프롬프트 구조 (대화흐름.ipynb 기반)**:
+- DetectedName의 context_before/after 활용
+- 이전 분석 결과 요약 포함 (mapping_history)
+- 참여자 이름 목록 제공
+- 분석 단서: 호칭 후 즉시 응답, 3인칭 언급 후 반응, 자기 지칭
+- PydanticOutputParser로 구조화된 응답 파싱
+
+**프롬프트 예시**:
+```python
+system_message = """당신은 회의 전사본 화자 매핑 전문가입니다.
+
+참여자 이름 목록: {participant_names}
+
+분석 단서:
+- 호칭 후 즉시 응답
+- 3인칭 언급 후 반응
+- 자기 지칭
+
+이전 분석 결과를 기억하고 일관성을 확인하세요."""
+
+user_message = """{history_summary}
+
+[분석 {turn_num}]
+
+{context_str}
+
+위 맥락에서 언급된 이름의 화자를 분석하세요."""
+```
+
+---
+
+### 구현 순서
+
+1. **Phase 1**: DB 데이터 로더 구현 (Agent 입력 준비)
+2. **Phase 2**: Tools 구현 (2개)
+3. **Phase 3**: Nodes 구현 (5개, 순차적으로)
+4. **Phase 4**: Graph 구성
+5. **Phase 5**: API 통합
+6. **Phase 6**: LLM 프롬프트 최적화
+
+---
+
+### 주의사항
+
+1. **DB 데이터 형식**: 
+   - `DetectedName.context_before/after`는 이미 JSON으로 저장되어 있음
+   - STTResult는 세그먼트 단위로 병합 필요
+
+2. **임베딩 차원**: 
+   - DiarizationResult.embedding은 192차원 벡터
+   - VoiceSimilarityTool에서 코사인 유사도 계산 시 차원 확인 필요
+
+3. **비동기 처리**: 
+   - Agent 실행은 시간이 오래 걸릴 수 있음
+   - BackgroundTasks 사용 필수
+   - 진행 상태 추적 API 필요
+
+4. **에러 핸들링**: 
+   - LLM 호출 실패 시 대체 로직 필요
+   - DetectedName이 없으면 name_based_tagging 스킵
+
+---
+
+### 향후 확장 계획
+
+- **화자 프로필 테이블**: 자동 매칭 기능을 위한 프로필 저장
+- **role_based_tagging**: 역할 기반 추론 추가
+- **교차 검증**: name_based + role_based 결과 비교

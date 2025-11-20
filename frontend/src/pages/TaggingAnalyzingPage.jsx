@@ -1,17 +1,75 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { analyzeTagging, getTaggingSuggestion } from '../services/api'
 
 export default function TaggingAnalyzingPage() {
   const { fileId } = useParams()
   const navigate = useNavigate()
+  const [status, setStatus] = useState('시작 중...')
+  const [error, setError] = useState(null)
 
   useEffect(() => {
-    // Mock: LLM 분석 시뮬레이션 (3초)
-    const timer = setTimeout(() => {
-      navigate(`/tagging/${fileId}`)
-    }, 3000)
-
-    return () => clearTimeout(timer)
+    const startAnalysis = async () => {
+      try {
+        setStatus('Agent 실행 중...')
+        
+        // 1. Agent 실행 시작
+        const analyzeResponse = await analyzeTagging(fileId)
+        console.log('Agent 실행 시작:', analyzeResponse)
+        
+        setStatus('분석 진행 중...')
+        
+        // 2. 결과가 준비될 때까지 폴링 (최대 60초)
+        let attempts = 0
+        const maxAttempts = 60 // 60초 (1초마다 체크)
+        
+        const checkResult = async () => {
+          try {
+            const result = await getTaggingSuggestion(fileId)
+            
+            // suggested_mappings가 있고 suggested_name이 있으면 완료
+            if (result.suggested_mappings && result.suggested_mappings.length > 0) {
+              const hasSuggestions = result.suggested_mappings.some(
+                m => m.suggested_name
+              )
+              
+              if (hasSuggestions) {
+                setStatus('분석 완료!')
+                setTimeout(() => {
+                  navigate(`/tagging/${fileId}`)
+                }, 1000)
+                return
+              }
+            }
+            
+            // 아직 완료되지 않았으면 계속 체크
+            attempts++
+            if (attempts < maxAttempts) {
+              setTimeout(checkResult, 1000)
+            } else {
+              setError('분석 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.')
+            }
+          } catch (err) {
+            console.error('결과 확인 실패:', err)
+            attempts++
+            if (attempts < maxAttempts) {
+              setTimeout(checkResult, 1000)
+            } else {
+              setError('결과를 확인하는 중 오류가 발생했습니다.')
+            }
+          }
+        }
+        
+        // 3초 후부터 결과 체크 시작 (Agent가 시작되는 시간)
+        setTimeout(checkResult, 3000)
+        
+      } catch (err) {
+        console.error('Agent 실행 실패:', err)
+        setError('Agent 실행 중 오류가 발생했습니다: ' + (err.response?.data?.detail || err.message))
+      }
+    }
+    
+    startAnalysis()
   }, [fileId, navigate])
 
   return (
@@ -52,8 +110,19 @@ export default function TaggingAnalyzingPage() {
               🤖 AI가 화자를 분석하고 있습니다
             </h2>
             <p className="text-gray-600 dark:text-gray-300 text-lg">
-              멀티턴 LLM으로 이름과 역할을 추론 중...
+              {status}
             </p>
+            {error && (
+              <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-red-800">{error}</p>
+                <button
+                  onClick={() => navigate(`/tagging/${fileId}`)}
+                  className="mt-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                >
+                  태깅 페이지로 이동
+                </button>
+              </div>
+            )}
           </div>
 
           {/* 분석 단계 */}
