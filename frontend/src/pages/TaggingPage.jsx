@@ -244,9 +244,25 @@ const TaggingPage = () => {
                           }}
                           className="px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:border-primary-400"
                         >
-                          <option value="">선택</option>
+                          <option value="">이름 선택</option>
                           {data.detected_names.map((name, idx) => (
                             <option key={idx} value={name}>{name}</option>
+                          ))}
+                        </select>
+                      )}
+                      {/* 감지된 닉네임 빠른 선택 */}
+                      {data.detected_nicknames && data.detected_nicknames.length > 0 && (
+                        <select
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              handleMappingChange(mapping.speaker_label, e.target.value);
+                            }
+                          }}
+                          className="px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:border-primary-400"
+                        >
+                          <option value="">닉네임 선택</option>
+                          {data.detected_nicknames.map((nickname, idx) => (
+                            <option key={idx} value={nickname}>{nickname}</option>
                           ))}
                         </select>
                       )}

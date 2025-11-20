@@ -385,6 +385,11 @@ def process_audio_pipeline(
                 # DB 저장 실패해도 파일 결과는 유지
 
         # 완료
+        # 닉네임 목록 추출
+        detected_nicknames_list = []
+        if nickname_result:
+            detected_nicknames_list = [info.get('nickname') for info in nickname_result.values() if info.get('nickname')]
+        
         PROCESSING_STATUS[file_id] = {
             "status": "completed",
             "step": "완료",
@@ -394,6 +399,7 @@ def process_audio_pipeline(
             "merged_path": str(work_dir / "merged_result.json") if merged_result else None,
             "ner_path": str(work_dir / "ner_result.json") if ner_result else None,
             "detected_names": ner_result['final_namelist'] if ner_result else [],
+            "detected_nicknames": detected_nicknames_list,  # 닉네임 추가
             "speaker_count": len(diarization_result.get('embeddings', {})) if diarization_result else 0,
         }
 
@@ -512,7 +518,20 @@ async def get_processing_status(file_id: str, db: Session = Depends(get_db)):
     """
     # 메모리에 있으면 반환 (처리 중인 파일)
     if file_id in PROCESSING_STATUS:
-        return PROCESSING_STATUS[file_id]
+        status = PROCESSING_STATUS[file_id]
+        # 메모리에 닉네임이 없으면 DB에서 가져오기
+        if status.get("status") == "completed" and "detected_nicknames" not in status:
+            audio_file = db.query(AudioFile).filter(
+                (AudioFile.file_path.like(f"%{file_id}%")) |
+                (AudioFile.original_filename.like(f"%{file_id}%"))
+            ).first()
+            if audio_file:
+                speaker_mappings = db.query(SpeakerMapping).filter(
+                    SpeakerMapping.audio_file_id == audio_file.id
+                ).all()
+                detected_nicknames = [mapping.nickname for mapping in speaker_mappings if mapping.nickname]
+                status["detected_nicknames"] = detected_nicknames
+        return status
 
     # DB에서 조회 (완료된 파일)
     audio_file = db.query(AudioFile).filter(

@@ -11,6 +11,8 @@ export default function SpeakerInfoConfirmPage() {
   const [speakerCount, setSpeakerCount] = useState(0)
   const [detectedNames, setDetectedNames] = useState([])
   const [detectedNicknames, setDetectedNicknames] = useState([])
+  const [selectedNames, setSelectedNames] = useState([]) // 선택된 이름들
+  const [selectedNicknames, setSelectedNicknames] = useState([]) // 선택된 닉네임들
   const [isEditing, setIsEditing] = useState(false)
   const [error, setError] = useState(null)
 
@@ -43,6 +45,9 @@ export default function SpeakerInfoConfirmPage() {
       setSpeakerCount(count)
       setDetectedNames(names)
       setDetectedNicknames(nicknames)
+      // 초기 선택 상태: 모든 이름과 닉네임 선택
+      setSelectedNames([...names])
+      setSelectedNicknames([...nicknames])
       setLoading(false)
     } catch (error) {
       console.error('화자 정보 조회 실패:', error)
@@ -53,39 +58,75 @@ export default function SpeakerInfoConfirmPage() {
 
   const handleAddName = () => {
     setDetectedNames([...detectedNames, ''])
+    // 새로 추가된 이름은 선택하지 않음 (빈 값이므로)
   }
 
   const handleRemoveName = (index) => {
+    const nameToRemove = detectedNames[index]
     setDetectedNames(detectedNames.filter((_, i) => i !== index))
+    // 선택된 이름 목록에서도 제거
+    setSelectedNames(selectedNames.filter(n => n !== nameToRemove))
   }
 
   const handleNameChange = (index, value) => {
     const updated = [...detectedNames]
+    const oldName = updated[index]
     updated[index] = value
     setDetectedNames(updated)
+    
+    // 선택된 이름 목록도 업데이트
+    if (selectedNames.includes(oldName)) {
+      setSelectedNames(selectedNames.map(n => n === oldName ? value : n))
+    }
   }
 
   const handleAddNickname = () => {
     setDetectedNicknames([...detectedNicknames, ''])
+    // 새로 추가된 닉네임은 선택하지 않음 (빈 값이므로)
   }
 
   const handleRemoveNickname = (index) => {
+    const nicknameToRemove = detectedNicknames[index]
     setDetectedNicknames(detectedNicknames.filter((_, i) => i !== index))
+    // 선택된 닉네임 목록에서도 제거
+    setSelectedNicknames(selectedNicknames.filter(n => n !== nicknameToRemove))
   }
 
   const handleNicknameChange = (index, value) => {
     const updated = [...detectedNicknames]
+    const oldNickname = updated[index]
     updated[index] = value
     setDetectedNicknames(updated)
+    
+    // 선택된 닉네임 목록도 업데이트
+    if (selectedNicknames.includes(oldNickname)) {
+      setSelectedNicknames(selectedNicknames.map(n => n === oldNickname ? value : n))
+    }
+  }
+
+  const handleNameToggle = (name) => {
+    if (selectedNames.includes(name)) {
+      setSelectedNames(selectedNames.filter(n => n !== name))
+    } else {
+      setSelectedNames([...selectedNames, name])
+    }
+  }
+
+  const handleNicknameToggle = (nickname) => {
+    if (selectedNicknames.includes(nickname)) {
+      setSelectedNicknames(selectedNicknames.filter(n => n !== nickname))
+    } else {
+      setSelectedNicknames([...selectedNicknames, nickname])
+    }
   }
 
   const handleConfirm = async () => {
     try {
       setLoading(true)
 
-      // 빈 이름/닉네임 제거
-      const validNames = detectedNames.filter(name => name.trim() !== '')
-      const validNicknames = detectedNicknames.filter(nickname => nickname.trim() !== '')
+      // 선택된 이름/닉네임만 사용 (빈 값 제거)
+      const validNames = selectedNames.filter(name => name.trim() !== '')
+      const validNicknames = selectedNicknames.filter(nickname => nickname.trim() !== '')
 
       // DB에 사용자 확정 정보 저장
       await confirmSpeakerInfo(fileId, speakerCount, validNames, validNicknames)
@@ -225,6 +266,12 @@ export default function SpeakerInfoConfirmPage() {
                     {isEditing ? (
                       <>
                         <input
+                          type="checkbox"
+                          checked={selectedNames.includes(name)}
+                          onChange={() => handleNameToggle(name)}
+                          className="w-5 h-5 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                        />
+                        <input
                           type="text"
                           value={name}
                           onChange={(e) => handleNameChange(index, e.target.value)}
@@ -239,9 +286,17 @@ export default function SpeakerInfoConfirmPage() {
                         </button>
                       </>
                     ) : (
-                      <div className="flex-1 px-4 py-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded-lg font-medium">
-                        {name}
-                      </div>
+                      <>
+                        <input
+                          type="checkbox"
+                          checked={selectedNames.includes(name)}
+                          onChange={() => handleNameToggle(name)}
+                          className="w-5 h-5 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                        />
+                        <div className="flex-1 px-4 py-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded-lg font-medium">
+                          {name}
+                        </div>
+                      </>
                     )}
                   </div>
                 ))
@@ -289,6 +344,12 @@ export default function SpeakerInfoConfirmPage() {
                     {isEditing ? (
                       <>
                         <input
+                          type="checkbox"
+                          checked={selectedNicknames.includes(nickname)}
+                          onChange={() => handleNicknameToggle(nickname)}
+                          className="w-5 h-5 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                        />
+                        <input
                           type="text"
                           value={nickname}
                           onChange={(e) => handleNicknameChange(index, e.target.value)}
@@ -303,9 +364,17 @@ export default function SpeakerInfoConfirmPage() {
                         </button>
                       </>
                     ) : (
-                      <div className="flex-1 px-4 py-2 bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-lg font-medium">
-                        {nickname}
-                      </div>
+                      <>
+                        <input
+                          type="checkbox"
+                          checked={selectedNicknames.includes(nickname)}
+                          onChange={() => handleNicknameToggle(nickname)}
+                          className="w-5 h-5 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                        />
+                        <div className="flex-1 px-4 py-2 bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-lg font-medium">
+                          {nickname}
+                        </div>
+                      </>
                     )}
                   </div>
                 ))
@@ -328,6 +397,8 @@ export default function SpeakerInfoConfirmPage() {
                   setSpeakerCount(speakerInfo.speaker_count)
                   setDetectedNames(speakerInfo.detected_names)
                   setDetectedNicknames(speakerInfo.detected_nicknames || [])
+                  setSelectedNames([...speakerInfo.detected_names])
+                  setSelectedNicknames([...speakerInfo.detected_nicknames || []])
                   setIsEditing(false)
                 }}
                 className="flex-1 px-6 py-3 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-semibold hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"

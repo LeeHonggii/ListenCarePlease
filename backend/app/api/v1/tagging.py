@@ -194,12 +194,13 @@ async def get_tagging_suggestion(file_id: str, db: Session = Depends(get_db)):
             )
         )
 
-    # 사용자가 확정한 이름 목록
+    # 사용자가 확정한 이름 및 닉네임 목록
     user_confirmation = db.query(UserConfirmation).filter(
         UserConfirmation.audio_file_id == audio_file.id
     ).first()
     
     detected_names = user_confirmation.confirmed_names if user_confirmation else []
+    detected_nicknames = user_confirmation.confirmed_nicknames if user_confirmation else []
 
     # sample_transcript 구성 (처음 20개 세그먼트)
     sample_transcript = []
@@ -216,6 +217,7 @@ async def get_tagging_suggestion(file_id: str, db: Session = Depends(get_db)):
     return TaggingSuggestionDetailResponse(
         file_id=file_id,
         detected_names=detected_names,
+        detected_nicknames=detected_nicknames,  # 닉네임 추가
         suggested_mappings=suggested_mappings,
         sample_transcript=sample_transcript
     )

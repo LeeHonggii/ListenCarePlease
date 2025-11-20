@@ -34,6 +34,7 @@ class TaggingSuggestionDetailResponse(BaseModel):
     """태깅 제안 상세 응답 (참고용 대본 포함)"""
     file_id: str
     detected_names: List[str]
+    detected_nicknames: Optional[List[str]] = None  # 감지된 닉네임 리스트
     suggested_mappings: List[SuggestedMapping]
     sample_transcript: List[TranscriptSegment]  # 참고용 대본 샘플
 

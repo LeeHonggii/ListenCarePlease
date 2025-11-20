@@ -152,18 +152,39 @@ export default function TaggingPageNew() {
                     className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                   />
 
-                  {/* 빠른 선택 */}
-                  {taggingData?.detected_names.length > 0 && (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {taggingData.detected_names.map((name, idx) => (
-                        <button
-                          key={idx}
-                          onClick={() => handleBulkNameChange(mapping.speaker_label, name)}
-                          className="px-3 py-1 bg-gray-100 dark:bg-gray-700 hover:bg-indigo-100 dark:hover:bg-indigo-900 text-gray-700 dark:text-gray-200 hover:text-indigo-700 dark:hover:text-indigo-200 rounded-full text-sm transition-colors"
-                        >
-                          {name}
-                        </button>
-                      ))}
+                  {/* 빠른 선택 - 이름 */}
+                  {taggingData?.detected_names && taggingData.detected_names.length > 0 && (
+                    <div className="mt-3">
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">이름 선택:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {taggingData.detected_names.map((name, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => handleBulkNameChange(mapping.speaker_label, name)}
+                            className="px-3 py-1 bg-indigo-100 dark:bg-indigo-900 hover:bg-indigo-200 dark:hover:bg-indigo-800 text-indigo-700 dark:text-indigo-200 rounded-full text-sm transition-colors"
+                          >
+                            {name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 빠른 선택 - 닉네임 */}
+                  {taggingData?.detected_nicknames && taggingData.detected_nicknames.length > 0 && (
+                    <div className="mt-3">
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">닉네임 선택:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {taggingData.detected_nicknames.map((nickname, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => handleBulkNameChange(mapping.speaker_label, nickname)}
+                            className="px-3 py-1 bg-purple-100 dark:bg-purple-900 hover:bg-purple-200 dark:hover:bg-purple-800 text-purple-700 dark:text-purple-200 rounded-full text-sm transition-colors"
+                          >
+                            {nickname}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
