@@ -135,7 +135,7 @@ def load_agent_input_data(audio_file_id: int, db: Session) -> Dict:
     user_confirmation = db.query(UserConfirmation).filter(
         UserConfirmation.audio_file_id == audio_file_id
     ).first()
-    
+
     participant_names = user_confirmation.confirmed_names if user_confirmation else []
 
     return {

@@ -11,7 +11,9 @@
       "Bash(cat:*)",
       "Bash(docker ps:*)",
       "Bash(docker-compose down:*)",
-      "Bash(docker start:*)"
+      "Bash(docker start:*)",
+      "Bash(tree:*)",
+      "Bash(alembic revision:*)"
     ],
     "deny": [],
     "ask": []

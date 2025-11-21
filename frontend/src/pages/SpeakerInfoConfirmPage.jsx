@@ -431,6 +431,19 @@ export default function SpeakerInfoConfirmPage() {
             ℹ️ 다음 단계에서는 각 화자(SPEAKER_00, SPEAKER_01...)에게 실제 이름을 매핑합니다.
           </p>
         </div>
+
+        {/* 홈으로 가기 버튼 */}
+        <div className="mt-6 text-center">
+          <button
+            onClick={() => navigate('/')}
+            className="px-6 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg font-medium transition"
+          >
+            홈으로 가기
+          </button>
+          <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+            나중에 대시보드에서 이어서 진행할 수 있습니다
+          </p>
+        </div>
       </div>
     </div>
   )

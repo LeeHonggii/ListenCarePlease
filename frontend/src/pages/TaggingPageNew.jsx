@@ -23,10 +23,10 @@ export default function TaggingPageNew() {
       const response = await axios.get(`${API_BASE_URL}/api/v1/tagging/${fileId}`)
       setTaggingData(response.data)
 
-      // 초기 화자 이름 매핑 (시스템 제안)
+      // 초기 화자 이름 매핑 (final_name 우선, 없으면 suggested_name)
       const initialNames = {}
       response.data.suggested_mappings.forEach((mapping) => {
-        initialNames[mapping.speaker_label] = mapping.suggested_name || ''
+        initialNames[mapping.speaker_label] = mapping.final_name || mapping.suggested_name || ''
       })
       setSpeakerNames(initialNames)
 
@@ -244,7 +244,7 @@ export default function TaggingPageNew() {
         )}
 
         {/* 확정 버튼 */}
-        <div className="mt-8">
+        <div className="mt-8 space-y-4">
           <button
             onClick={handleConfirm}
             disabled={!allNamesFilled}
@@ -256,6 +256,19 @@ export default function TaggingPageNew() {
           >
             {allNamesFilled ? '✅ 태깅 완료 → 결과 보기' : '⚠️ 모든 화자의 이름을 입력해주세요'}
           </button>
+
+          {/* 홈으로 가기 버튼 */}
+          <div className="text-center">
+            <button
+              onClick={() => navigate('/')}
+              className="px-6 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg font-medium transition"
+            >
+              홈으로 가기
+            </button>
+            <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+              나중에 대시보드에서 이어서 진행할 수 있습니다
+            </p>
+          </div>
         </div>
       </div>
     </div>

@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.api.deps import get_db
 from fastapi import Depends
-from app.models.audio_file import AudioFile
+from app.models.audio_file import AudioFile, FileStatus
 from app.models.preprocessing import PreprocessingResult
 from app.models.stt import STTResult
 from app.models.diarization import DiarizationResult
@@ -55,7 +55,43 @@ def process_audio_pipeline(
         # 모델 크기 고정
         model_size = "large-v3"
 
+        # 1) 파일 경로 가져오기 + DB에서 AudioFile 찾기
+        upload_dir = Path("/app/uploads")
+        input_files = list(upload_dir.glob(f"{file_id}.*"))
+        if not input_files:
+            raise FileNotFoundError(f"파일을 찾을 수 없습니다: {file_id}")
+        input_path = input_files[0]
+
+        # DB에서 AudioFile 찾기 또는 생성
+        audio_file = db.query(AudioFile).filter(
+            (AudioFile.file_path.like(f"%{file_id}%")) |
+            (AudioFile.original_filename.like(f"%{file_id}%"))
+        ).first()
+
+        if not audio_file:
+            # upload.py의 UPLOADED_FILES에서 원본 파일명 가져오기
+            from app.api.v1.upload import UPLOADED_FILES
+            original_name = UPLOADED_FILES.get(file_id, {}).get("filename", input_path.name)
+
+            # 새 파일이면 생성
+            audio_file = AudioFile(
+                user_id=1,  # TODO: 실제 user_id로 교체
+                original_filename=original_name,
+                file_path=str(input_path),
+                file_size=input_path.stat().st_size,
+                mimetype="audio/wav",
+                status=FileStatus.PROCESSING
+            )
+            db.add(audio_file)
+            db.flush()
+
         # 상태 업데이트: 전처리 시작
+        audio_file.status = FileStatus.PROCESSING
+        audio_file.processing_step = "preprocessing"
+        audio_file.processing_progress = 10
+        audio_file.processing_message = "전처리 중..."
+        db.commit()
+
         PROCESSING_STATUS[file_id] = {
             "status": "preprocessing",
             "step": "전처리 중...",
@@ -64,13 +100,6 @@ def process_audio_pipeline(
             "model_size": model_size,
         }
 
-        # 1) 파일 경로 가져오기 (임시로 하드코딩, 나중에 DB에서 가져오기)
-        upload_dir = Path("/app/uploads")
-        input_files = list(upload_dir.glob(f"{file_id}.*"))
-        if not input_files:
-            raise FileNotFoundError(f"파일을 찾을 수 없습니다: {file_id}")
-        input_path = input_files[0]
-
         # 작업 디렉토리 생성
         work_dir = Path(f"/app/temp/{file_id}")
         work_dir.mkdir(parents=True, exist_ok=True)
@@ -78,6 +107,13 @@ def process_audio_pipeline(
         # 2) 전처리
         preprocessed_path = work_dir / "preprocessed.wav"
         _, original_dur, processed_dur = preprocess_audio(input_path, preprocessed_path)
+
+        # 상태 업데이트: 전처리 완료
+        audio_file.duration = original_dur
+        audio_file.processing_step = "preprocessing_complete"
+        audio_file.processing_progress = 30
+        audio_file.processing_message = "전처리 완료"
+        db.commit()
 
         PROCESSING_STATUS[file_id] = {
             "status": "preprocessing",
@@ -90,6 +126,12 @@ def process_audio_pipeline(
         # 3) STT
         use_local = whisper_mode == "local"
         stt_method = f"{'로컬' if use_local else 'API'} Whisper ({model_size})"
+
+        # 상태 업데이트: STT 시작
+        audio_file.processing_step = "stt"
+        audio_file.processing_progress = 40
+        audio_file.processing_message = f"STT 진행 중... ({stt_method})"
+        db.commit()
 
         PROCESSING_STATUS[file_id] = {
             "status": "stt",
@@ -118,6 +160,12 @@ def process_audio_pipeline(
 
         # 4) Diarization (화자 분리)
         diarization_method = "Senko" if diarization_mode == "senko" else "NeMo"
+
+        # 상태 업데이트: Diarization 시작
+        audio_file.processing_step = "diarization"
+        audio_file.processing_progress = 70
+        audio_file.processing_message = f"화자 분리 중... ({diarization_method})"
+        db.commit()
 
         PROCESSING_STATUS[file_id] = {
             "status": "diarization",
@@ -172,6 +220,12 @@ def process_audio_pipeline(
             merged_result = None
 
         # 5) NER (이름 추출 및 군집화) + 닉네임 태깅 (동시 처리)
+        # 상태 업데이트: NER 시작
+        audio_file.processing_step = "ner"
+        audio_file.processing_progress = 85
+        audio_file.processing_message = "이름 및 닉네임 추출 중..."
+        db.commit()
+
         PROCESSING_STATUS[file_id] = {
             "status": "ner",
             "step": "이름 및 닉네임 추출 중...",
@@ -207,6 +261,12 @@ def process_audio_pipeline(
             nickname_result = None
 
         # 6) DB 저장
+        # 상태 업데이트: DB 저장 시작
+        audio_file.processing_step = "saving"
+        audio_file.processing_progress = 90
+        audio_file.processing_message = "DB 저장 중..."
+        db.commit()
+
         PROCESSING_STATUS[file_id] = {
             "status": "saving",
             "step": "DB 저장 중...",
@@ -218,28 +278,6 @@ def process_audio_pipeline(
             try:
                 from app.models.diarization import DiarizationResult
                 from app.models.tagging import SpeakerMapping
-                from app.models.audio_file import AudioFile, FileStatus
-
-                # 6-1) AudioFile 레코드 생성/업데이트
-                # file_id로 파일 검색 (original_filename 또는 file_path에 포함되어 있을 수 있음)
-                audio_file = db.query(AudioFile).filter(
-                    (AudioFile.file_path.like(f"%{file_id}%")) |
-                    (AudioFile.original_filename.like(f"%{file_id}%"))
-                ).first()
-
-                # 새 파일이면 생성 (임시: user_id=1 하드코딩)
-                if not audio_file:
-                    audio_file = AudioFile(
-                        user_id=1,  # TODO: 실제 user_id로 교체
-                        original_filename=input_path.name,
-                        file_path=str(input_path),
-                        file_size=input_path.stat().st_size,
-                        duration=original_dur,
-                        mimetype="audio/wav",
-                        status=FileStatus.PROCESSING
-                    )
-                    db.add(audio_file)
-                    db.flush()  # ID 생성
 
                 audio_file_id_db = audio_file.id
 
@@ -360,8 +398,11 @@ def process_audio_pipeline(
                             existing.nickname = nickname_info.get('nickname')
                             existing.nickname_metadata = nickname_info.get('nickname_metadata')
 
-                # 6-6) AudioFile 상태 업데이트
+                # 6-6) AudioFile 상태 업데이트: 완료
                 audio_file.status = FileStatus.COMPLETED
+                audio_file.processing_step = "completed"
+                audio_file.processing_progress = 100
+                audio_file.processing_message = "처리 완료"
 
                 # 커밋
                 db.commit()
@@ -404,12 +445,22 @@ def process_audio_pipeline(
         }
 
     except Exception as e:
+        # 에러 발생 시 DB 업데이트
+        if 'audio_file' in locals() and audio_file:
+            audio_file.status = FileStatus.FAILED
+            audio_file.processing_step = "failed"
+            audio_file.processing_progress = 0
+            audio_file.processing_message = "오류 발생"
+            audio_file.error_message = str(e)
+            db.commit()
+
         PROCESSING_STATUS[file_id] = {
             "status": "failed",
             "step": "오류 발생",
             "progress": 0,
             "error": str(e),
         }
+        raise  # 에러를 다시 발생시켜 로그에 남김
     finally:
         # DB 세션 종료
         db.close()
@@ -420,13 +471,14 @@ async def start_processing(
     file_id: str,
     background_tasks: BackgroundTasks,
     whisper_mode: str = None,  # "local" or "api" (None일 경우 설정값 사용)
-    diarization_mode: str = None  # "senko" or "nemo" (None일 경우 설정값 사용)
+    diarization_mode: str = None,  # "senko" or "nemo" (None일 경우 설정값 사용)
+    db: Session = Depends(get_db)
 ):
     """
     오디오 처리 시작 (백그라운드)
 
     Args:
-        file_id: 업로드된 파일 ID
+        file_id: 업로드된 파일 ID (UUID 또는 DB ID)
         whisper_mode: Whisper 모드 ("local" 또는 "api", 기본값: 설정값)
         diarization_mode: 화자 분리 모델 ("senko" 또는 "nemo", 기본값: 설정값)
 
@@ -439,9 +491,21 @@ async def start_processing(
         - senko: 빠름, 간단
         - nemo: 정확, 세밀한 설정
     """
+    import re
+
     # 파일 존재 확인
     upload_dir = Path("/app/uploads")
-    input_files = list(upload_dir.glob(f"{file_id}.*"))
+    actual_file_id = file_id
+
+    # 숫자 ID인 경우 DB에서 UUID 추출
+    if file_id.isdigit():
+        audio_file = db.query(AudioFile).filter(AudioFile.id == int(file_id)).first()
+        if audio_file and audio_file.file_path:
+            match = re.search(r'([a-f0-9\-]{36})', audio_file.file_path)
+            if match:
+                actual_file_id = match.group(1)
+
+    input_files = list(upload_dir.glob(f"{actual_file_id}.*"))
     if not input_files:
         raise HTTPException(status_code=404, detail="파일을 찾을 수 없습니다.")
 
@@ -462,21 +526,21 @@ async def start_processing(
         raise HTTPException(status_code=400, detail="OpenAI API 키가 설정되지 않았습니다. .env 파일을 확인하세요.")
 
     # 중복 처리 방지: 이미 처리 중인 파일인지 확인
-    if file_id in PROCESSING_STATUS:
-        current_status = PROCESSING_STATUS[file_id].get("status")
+    if actual_file_id in PROCESSING_STATUS:
+        current_status = PROCESSING_STATUS[actual_file_id].get("status")
         if current_status not in ["completed", "failed"]:
             # 이미 처리 중이면 현재 상태 반환
             return {
-                "file_id": file_id,
+                "file_id": actual_file_id,
                 "message": "이미 처리 중입니다.",
-                "status": PROCESSING_STATUS[file_id]
+                "status": PROCESSING_STATUS[actual_file_id]
             }
 
     # 디바이스 자동 감지
     detected_device = get_device()
 
     # 백그라운드 작업 시작
-    PROCESSING_STATUS[file_id] = {
+    PROCESSING_STATUS[actual_file_id] = {
         "status": "queued",
         "step": "대기 중...",
         "progress": 0,
@@ -489,13 +553,13 @@ async def start_processing(
     # 백그라운드 태스크 시작 (내부에서 DB 세션 생성)
     background_tasks.add_task(
         process_audio_pipeline,
-        file_id,
+        actual_file_id,
         use_whisper_mode,
         use_diarization_mode
     )
 
     return {
-        "file_id": file_id,
+        "file_id": actual_file_id,
         "message": "처리가 시작되었습니다.",
         "status": "queued",
         "whisper_mode": use_whisper_mode,
@@ -511,20 +575,36 @@ async def get_processing_status(file_id: str, db: Session = Depends(get_db)):
     처리 상태 조회 (메모리 또는 DB)
 
     Args:
-        file_id: 파일 ID
+        file_id: 파일 ID (UUID 또는 DB ID)
 
     Returns:
         현재 처리 상태
     """
+    import re
+
+    actual_file_id = file_id
+
+    # 숫자 ID인 경우 DB에서 UUID 추출
+    if file_id.isdigit():
+        audio_file = db.query(AudioFile).filter(AudioFile.id == int(file_id)).first()
+        if audio_file and audio_file.file_path:
+            match = re.search(r'([a-f0-9\-]{36})', audio_file.file_path)
+            if match:
+                actual_file_id = match.group(1)
+
     # 메모리에 있으면 반환 (처리 중인 파일)
-    if file_id in PROCESSING_STATUS:
-        status = PROCESSING_STATUS[file_id]
+    if actual_file_id in PROCESSING_STATUS:
+        status = PROCESSING_STATUS[actual_file_id]
         # 메모리에 닉네임이 없으면 DB에서 가져오기
         if status.get("status") == "completed" and "detected_nicknames" not in status:
-            audio_file = db.query(AudioFile).filter(
-                (AudioFile.file_path.like(f"%{file_id}%")) |
-                (AudioFile.original_filename.like(f"%{file_id}%"))
-            ).first()
+            audio_file = None
+            if file_id.isdigit():
+                audio_file = db.query(AudioFile).filter(AudioFile.id == int(file_id)).first()
+            if not audio_file:
+                audio_file = db.query(AudioFile).filter(
+                    (AudioFile.file_path.like(f"%{file_id}%")) |
+                    (AudioFile.original_filename.like(f"%{file_id}%"))
+                ).first()
             if audio_file:
                 speaker_mappings = db.query(SpeakerMapping).filter(
                     SpeakerMapping.audio_file_id == audio_file.id
@@ -533,11 +613,15 @@ async def get_processing_status(file_id: str, db: Session = Depends(get_db)):
                 status["detected_nicknames"] = detected_nicknames
         return status
 
-    # DB에서 조회 (완료된 파일)
-    audio_file = db.query(AudioFile).filter(
-        (AudioFile.file_path.like(f"%{file_id}%")) |
-        (AudioFile.original_filename.like(f"%{file_id}%"))
-    ).first()
+    # DB에서 조회 (완료된 파일) - ID(숫자)로 먼저 시도
+    audio_file = None
+    if file_id.isdigit():
+        audio_file = db.query(AudioFile).filter(AudioFile.id == int(file_id)).first()
+    if not audio_file:
+        audio_file = db.query(AudioFile).filter(
+            (AudioFile.file_path.like(f"%{file_id}%")) |
+            (AudioFile.original_filename.like(f"%{file_id}%"))
+        ).first()
 
     if not audio_file:
         raise HTTPException(status_code=404, detail="처리 정보를 찾을 수 없습니다.")
@@ -885,4 +969,37 @@ async def export_merged_json(file_id: str, db: Session = Depends(get_db)):
         "file_path": str(export_path),
         "file_name": export_filename,
         "total_segments": len(merged_segments),
+    }
+
+
+@router.get("/status/{file_id}")
+async def get_processing_status(
+    file_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    파일 처리 진행 상태 조회 (대시보드용)
+
+    Args:
+        file_id: 오디오 파일 ID
+
+    Returns:
+        처리 상태 정보
+    """
+    audio_file = db.query(AudioFile).filter(AudioFile.id == file_id).first()
+
+    if not audio_file:
+        raise HTTPException(status_code=404, detail="파일을 찾을 수 없습니다")
+
+    return {
+        "file_id": file_id,
+        "filename": audio_file.original_filename,
+        "status": audio_file.status.value,
+        "processing_step": audio_file.processing_step,
+        "progress": audio_file.processing_progress,
+        "message": audio_file.processing_message,
+        "error": audio_file.error_message,
+        "duration": audio_file.duration,
+        "created_at": audio_file.created_at,
+        "updated_at": audio_file.updated_at
     }

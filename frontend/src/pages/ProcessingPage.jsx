@@ -26,8 +26,14 @@ const ProcessingPage = () => {
 
     const initiateProcessing = async () => {
       try {
-        // 백엔드 처리 시작
-        await startProcessing(fileId, whisperMode, diarizationMode);
+        // 먼저 상태 확인 - 이미 처리 중이면 startProcessing 호출 안 함
+        const currentStatus = await getProcessingStatus(fileId).catch(() => null);
+
+        // 이미 처리 중이거나 완료된 경우는 startProcessing 호출 안 함
+        if (!currentStatus || currentStatus.status === 'uploaded' || currentStatus.status === 'failed') {
+          // 백엔드 처리 시작
+          await startProcessing(fileId, whisperMode, diarizationMode);
+        }
 
         // 상태 폴링 시작 (2초마다)
         pollingInterval = setInterval(async () => {
@@ -203,6 +209,19 @@ const ProcessingPage = () => {
           <div className="mt-8 p-4 bg-indigo-50 dark:bg-indigo-900/30 rounded-lg border border-indigo-200 dark:border-indigo-800">
             <p className="text-indigo-700 dark:text-indigo-300 text-sm text-center">
               💡 처리가 완료되면 자동으로 다음 단계로 이동합니다
+            </p>
+          </div>
+
+          {/* 홈으로 가기 버튼 */}
+          <div className="mt-6 text-center">
+            <button
+              onClick={() => navigate('/')}
+              className="px-6 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg font-medium transition"
+            >
+              홈으로 가기
+            </button>
+            <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+              나중에 대시보드에서 이어서 진행할 수 있습니다
             </p>
           </div>
         </div>

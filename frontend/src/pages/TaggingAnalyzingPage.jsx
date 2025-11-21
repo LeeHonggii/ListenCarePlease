@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { analyzeTagging, getTaggingSuggestion } from '../services/api'
 
@@ -7,8 +7,12 @@ export default function TaggingAnalyzingPage() {
   const navigate = useNavigate()
   const [status, setStatus] = useState('시작 중...')
   const [error, setError] = useState(null)
+  const hasStarted = useRef(false)  // 중복 실행 방지
 
   useEffect(() => {
+    if (hasStarted.current) return  // 이미 시작했으면 무시
+    hasStarted.current = true
+
     const startAnalysis = async () => {
       try {
         setStatus('Agent 실행 중...')
@@ -152,6 +156,19 @@ export default function TaggingAnalyzingPage() {
           <div className="mt-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
             <p className="text-sm text-blue-800 text-center">
               💡 잠시만 기다려주세요. I,O.md의 멀티턴 LLM 분석이 진행됩니다.
+            </p>
+          </div>
+
+          {/* 홈으로 가기 버튼 */}
+          <div className="mt-6 text-center">
+            <button
+              onClick={() => navigate('/')}
+              className="px-6 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg font-medium transition"
+            >
+              홈으로 가기
+            </button>
+            <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+              나중에 대시보드에서 이어서 진행할 수 있습니다
             </p>
           </div>
         </div>

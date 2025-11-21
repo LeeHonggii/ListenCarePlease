@@ -114,4 +114,36 @@ export const getTaggingResult = async (fileId) => {
   return response.data;
 };
 
+// ===== 대시보드 API =====
+
+// 대시보드 통계 조회
+export const getDashboardStats = async (userId, period = 'week') => {
+  const response = await api.get(`/api/v1/dashboard/stats`, {
+    params: { user_id: userId, period }
+  });
+  return response.data;
+};
+
+// 최근 파일 목록 조회
+export const getRecentFiles = async (userId, limit = 10) => {
+  const response = await api.get(`/api/v1/dashboard/recent-files`, {
+    params: { user_id: userId, limit }
+  });
+  return response.data;
+};
+
+// 처리 중인 파일 목록 조회
+export const getProcessingFilesFromDashboard = async (userId) => {
+  const response = await api.get(`/api/v1/dashboard/processing-files`, {
+    params: { user_id: userId }
+  });
+  return response.data;
+};
+
+// 파일 삭제
+export const deleteAudioFile = async (fileId) => {
+  const response = await api.delete(`/api/v1/dashboard/files/${fileId}`);
+  return response.data;
+};
+
 export default api;

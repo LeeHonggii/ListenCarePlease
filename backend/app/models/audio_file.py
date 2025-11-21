@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, BigInteger, Float, DateTime, Enum, ForeignKey
+from sqlalchemy import Column, Integer, String, BigInteger, Float, DateTime, Enum, ForeignKey, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.db.base import Base
@@ -29,6 +29,12 @@ class AudioFile(Base):
 
     # 상태
     status = Column(Enum(FileStatus), default=FileStatus.UPLOADED, nullable=False, index=True)
+
+    # 처리 진행 상태 (대시보드용)
+    processing_step = Column(String(50), nullable=True)  # 'preprocessing', 'stt', 'diarization', 'ner', 'completed'
+    processing_progress = Column(Integer, default=0, nullable=False)  # 0-100
+    processing_message = Column(String(200), nullable=True)  # "전처리 중...", "STT 진행 중..."
+    error_message = Column(Text, nullable=True)  # 에러 발생 시 메시지
 
     # 타임스탬프
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

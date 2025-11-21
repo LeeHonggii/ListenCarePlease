@@ -143,11 +143,15 @@ async def get_tagging_suggestion(file_id: str, db: Session = Depends(get_db)):
     화자 태깅 제안 조회
     I,O.md Step 5d - 시스템이 분석한 결과를 사용자에게 제안
     """
-    # AudioFile 찾기
-    audio_file = db.query(AudioFile).filter(
-        (AudioFile.file_path.like(f"%{file_id}%")) |
-        (AudioFile.original_filename.like(f"%{file_id}%"))
-    ).first()
+    # AudioFile 찾기 - ID(숫자)로 먼저 시도, 실패시 문자열 검색
+    audio_file = None
+    if file_id.isdigit():
+        audio_file = db.query(AudioFile).filter(AudioFile.id == int(file_id)).first()
+    if not audio_file:
+        audio_file = db.query(AudioFile).filter(
+            (AudioFile.file_path.like(f"%{file_id}%")) |
+            (AudioFile.original_filename.like(f"%{file_id}%"))
+        ).first()
 
     if not audio_file:
         raise HTTPException(status_code=404, detail="파일을 찾을 수 없습니다")
@@ -183,14 +187,15 @@ async def get_tagging_suggestion(file_id: str, db: Session = Depends(get_db)):
         SpeakerMapping.audio_file_id == audio_file.id
     ).all()
 
-    # suggested_mappings 구성
+    # suggested_mappings 구성 (기존 final_name도 포함)
     suggested_mappings = []
     for sm in speaker_mappings:
         suggested_mappings.append(
             SuggestedMapping(
                 speaker_label=sm.speaker_label,
                 suggested_name=sm.suggested_name,
-                nickname=sm.nickname
+                nickname=sm.nickname,
+                final_name=sm.final_name  # 기존 확정된 이름
             )
         )
 
@@ -198,9 +203,20 @@ async def get_tagging_suggestion(file_id: str, db: Session = Depends(get_db)):
     user_confirmation = db.query(UserConfirmation).filter(
         UserConfirmation.audio_file_id == audio_file.id
     ).first()
-    
-    detected_names = user_confirmation.confirmed_names if user_confirmation else []
-    detected_nicknames = user_confirmation.confirmed_nicknames if user_confirmation else []
+
+    detected_names = user_confirmation.confirmed_names if user_confirmation and user_confirmation.confirmed_names else []
+    detected_nicknames = user_confirmation.confirmed_nicknames if user_confirmation and user_confirmation.confirmed_nicknames else []
+
+    # UserConfirmation이 없으면 DetectedName 테이블에서 가져오기
+    if not detected_names:
+        detected_names_query = db.query(DetectedName.detected_name).filter(
+            DetectedName.audio_file_id == audio_file.id
+        ).distinct().all()
+        detected_names = [name[0] for name in detected_names_query if name[0]]
+
+    # 닉네임이 없으면 SpeakerMapping에서 가져오기
+    if not detected_nicknames:
+        detected_nicknames = [sm.nickname for sm in speaker_mappings if sm.nickname]
 
     # sample_transcript 구성 (처음 20개 세그먼트)
     sample_transcript = []
@@ -385,11 +401,15 @@ async def confirm_tagging(
     화자 태깅 확정
     I,O.md Step 5e - 사용자가 최종 확정한 화자 이름 저장
     """
-    # AudioFile 찾기
-    audio_file = db.query(AudioFile).filter(
-        (AudioFile.file_path.like(f"%{request.file_id}%")) |
-        (AudioFile.original_filename.like(f"%{request.file_id}%"))
-    ).first()
+    # AudioFile 찾기 - ID(숫자)로 먼저 시도, 실패시 문자열 검색
+    audio_file = None
+    if request.file_id.isdigit():
+        audio_file = db.query(AudioFile).filter(AudioFile.id == int(request.file_id)).first()
+    if not audio_file:
+        audio_file = db.query(AudioFile).filter(
+            (AudioFile.file_path.like(f"%{request.file_id}%")) |
+            (AudioFile.original_filename.like(f"%{request.file_id}%"))
+        ).first()
 
     if not audio_file:
         raise HTTPException(status_code=404, detail="파일을 찾을 수 없습니다")
@@ -439,11 +459,16 @@ async def get_tagging_result(file_id: str, db: Session = Depends(get_db)):
     확정된 태깅 결과 조회
     I,O.md Step 5f - 사용자가 확정한 화자 이름이 적용된 최종 대본
     """
-    # AudioFile 찾기
-    audio_file = db.query(AudioFile).filter(
-        (AudioFile.file_path.like(f"%{file_id}%")) |
-        (AudioFile.original_filename.like(f"%{file_id}%"))
-    ).first()
+    # AudioFile 찾기 - ID(숫자)로 먼저 시도, 실패시 문자열 검색
+    audio_file = None
+    if file_id.isdigit():
+        audio_file = db.query(AudioFile).filter(AudioFile.id == int(file_id)).first()
+
+    if not audio_file:
+        audio_file = db.query(AudioFile).filter(
+            (AudioFile.file_path.like(f"%{file_id}%")) |
+            (AudioFile.original_filename.like(f"%{file_id}%"))
+        ).first()
 
     if not audio_file:
         raise HTTPException(status_code=404, detail="파일을 찾을 수 없습니다")

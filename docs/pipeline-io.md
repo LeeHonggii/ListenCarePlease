@@ -76,12 +76,13 @@
 - **Input 1 (from STT):** `List[WordSegment]` (3번 결과)
 - **Input 2 (from Diarization):** `DiarizationResult` (4번 결과 - 임베딩 포함)
 
-**[✅ 현재 구현 상태 - 2025-11-18]**
+**[✅ 현재 구현 상태 - 2025-11-20]**
 - **NER (Named Entity Recognition)**: `seungkukim/korean-pii-masking` BERT 모델 사용
 - **Levenshtein Distance Clustering**: 유사 이름 그룹화 ("재형", "재" → "재형")
+- **닉네임 태깅**: LLM 기반 역할/특징 기반 닉네임 생성 (NER와 동시 처리)
 - **DB 저장 완료**:
   - `detected_names`: 감지된 이름 + 앞뒤 5문장 context (JSON 형태)
-  - `speaker_mappings`: 화자별 초기 레코드 (suggested_name=None, 향후 LLM이 추론)
+  - `speaker_mappings`: 화자별 초기 레코드 (suggested_name=None, nickname=LLM 생성 닉네임)
   - `stt_results`: 전사 텍스트 (TEXT 컬럼으로 긴 세그먼트 지원)
   - `diarization_results`: 화자 구간 + 임베딩 벡터 (JSON 형태)
 
@@ -101,7 +102,7 @@
 
 이름이 대화에서 언급된 경우 사용합니다.
 
-1. **(이름 감지):** 3번(STT) 결과에서 "민서씨", "인서씨", "김팀장님" 등 이름 후보를 추출합니다.
+1. **(이름 감지 + 닉네임 생성):** 3번(STT) 결과에서 "민서씨", "인서씨", "김팀장님" 등 이름 후보를 추출합니다. 동시에 LLM을 사용하여 각 화자의 역할/특징 기반 닉네임(예: "진행 담당자", "기술 전문가")을 생성합니다.
 
 2. **(확장 문맥 추출):** 이름이 나온 문장을 기준으로 **앞뒤 5개 문장**을 함께 추출합니다.
    ```python
@@ -294,27 +295,24 @@
 ### 5d. UI로 전달 (사용자 검증 요청)
 
 - **Output (to UI):**JSON
-    - **[✅ 현재 구현]**: `detected_names` 테이블에 감지된 이름 저장, `speaker_mappings`에 화자별 초기 레코드 저장
+    - **[✅ 현재 구현]**: `detected_names` 테이블에 감지된 이름 저장, `speaker_mappings`에 화자별 초기 레코드 저장, 닉네임 정보 포함
     - **[🚧 향후 구현]**: 2가지 방식(이름 기반 + 역할 기반)의 LLM 추론 결과를 통합하여 전달
 
     ```python
-    # 현재 구현 (2025-11-18)
+    # 현재 구현 (2025-11-20)
     {
-      "detected_names": [
-        {
-          "id": 1,
-          "detected_name": "민서",
-          "speaker_label": "SPEAKER_01",
-          "time_detected": 36.17,
-          "context_before": [{"index": -5, "speaker": "SPEAKER_02", "text": "...", "time": 31.0}, ...],
-          "context_after": [{"index": 1, "speaker": "SPEAKER_04", "text": "...", "time": 38.0}, ...]
-        },
-        ...
-      ],
+      "detected_names": ["민서", "인서"],  // 감지된 이름 리스트
+      "detected_nicknames": ["진행 담당자", "기술 전문가"],  // 감지된 닉네임 리스트
       "speaker_mappings": [
         {
           "speaker_label": "SPEAKER_00",
           "suggested_name": null,  // 초기에는 null (향후 LLM이 추론)
+          "nickname": "진행 담당자",  // LLM이 생성한 닉네임
+          "nickname_metadata": {
+            "display_label": "진행 담당자",
+            "one_liner": "회의 진행을 주도하는 역할",
+            "keywords": ["시작", "안건", "마무리"]
+          },
           "name_confidence": null,
           "name_mentions": 0,
           "suggested_role": null,
@@ -355,12 +353,13 @@
 ### 5e. UI로부터 입력 (사용자 확정)
 
 - **Input (from UI):**JSON
-    - 사용자가 제안을 검토하고 최종 수정한 매핑 정보.
+    - 사용자가 제안을 검토하고 최종 수정한 매핑 정보 (이름 및 닉네임).
     
     ```python
     {
-      "SPEAKER_00": "김민서", // (사용자가 '민서'를 '김민서'로 수정)
-      "SPEAKER_01": "박철수"  // (사용자가 'null'을 '박철수'로 입력)
+      "speaker_count": 3,
+      "detected_names": ["민서", "인서", "김팀장"],  // 사용자가 선택/수정한 이름 리스트
+      "detected_nicknames": ["진행 담당자", "기술 전문가"]  // 사용자가 선택/수정한 닉네임 리스트 (선택적)
     }
     ```
     

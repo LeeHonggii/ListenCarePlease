@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { login, getGoogleLoginUrl, getKakaoLoginUrl } from '../services/authService'
+import { login, getGoogleLoginUrl, getKakaoLoginUrl, getCurrentUser } from '../services/authService'
+import { getAccessToken } from '../utils/auth'
 import { useAuth } from '../contexts/AuthContext'
 
 const LoginPage = () => {
@@ -30,7 +31,10 @@ const LoginPage = () => {
     try {
       await login(formData.email, formData.password)
 
-      // 로그인 성공 - 사용자 정보 업데이트는 AuthContext에서 처리
+      // 로그인 성공 - 사용자 정보 가져오기
+      const token = getAccessToken()
+      const userData = await getCurrentUser(token)
+      setUser(userData)
       setIsAuthenticated(true)
       navigate('/')
     } catch (err) {

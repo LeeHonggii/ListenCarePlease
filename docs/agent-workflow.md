@@ -623,18 +623,22 @@ os.environ["LANGCHAIN_PROJECT"] = "speaker-tagging-agent"
 
 ---
 
-## 구현 계획 (2025-11-19)
+## 구현 계획 (2025-11-20 업데이트)
 
 ### 현재 구현 상태
 
 **완료된 부분:**
-1. **데이터 파이프라인**: STT + Diarization + NER 처리 완료
+1. **데이터 파이프라인**: STT + Diarization + NER + 닉네임 태깅 처리 완료
 2. **DB 저장**: 
    - `STTResult`: 전사 텍스트 (text, start_time, end_time)
    - `DiarizationResult`: 화자 구간 + 임베딩 벡터 (speaker_label, embedding)
    - `DetectedName`: 감지된 이름 + 앞뒤 5문장 context (detected_name, context_before, context_after) - **NER 결과**
-   - `SpeakerMapping`: 화자별 초기 레코드 (suggested_name=None, final_name="")
+   - `SpeakerMapping`: 화자별 초기 레코드 (suggested_name=None, nickname=LLM 생성 닉네임, final_name="")
+   - `UserConfirmation`: 사용자 확정 정보 (confirmed_names, confirmed_nicknames)
 3. **Export 기능**: 임베딩 포함 결과 export 완료
+4. **LangSmith 추적**: 자동 설정 및 API 키 인식 완료
+5. **LLM 모델 호환성**: gpt-5-mini temperature 이슈 해결 완료
+6. **멀티턴 요약**: 개선된 요약 로직 구현 완료 (최근 10개 결과, 화자별 그룹화)
 
 **미구현 부분:**
 - LangGraph Agent 파이프라인
@@ -877,8 +881,10 @@ async def analyze_speakers(
 
 **LLM 설정**:
 - OpenAI API 키 설정 확인
-- 모델: gpt-4 또는 gpt-4-turbo-preview
-- Temperature: 0.3 (일관성 유지)
+- 모델: gpt-5-mini-2025-08-07 (기본), gpt-4-turbo-preview (대안)
+- Temperature: 모델별 조건부 설정
+  - `gpt-5-mini`: temperature=1.0 (기본값만 지원)
+  - 기타 모델: temperature=0.3 (일관성 유지)
 
 **프롬프트 구조 (대화흐름.ipynb 기반)**:
 - DetectedName의 context_before/after 활용
@@ -948,3 +954,12 @@ user_message = """{history_summary}
 - **화자 프로필 테이블**: 자동 매칭 기능을 위한 프로필 저장
 - **role_based_tagging**: 역할 기반 추론 추가
 - **교차 검증**: name_based + role_based 결과 비교
+
+### 최근 완료 사항 (2025-11-20)
+
+- ✅ **닉네임 태깅 기능 통합**: NER와 동시에 LLM 기반 닉네임 생성
+- ✅ **데이터베이스 스키마 확장**: nickname, nickname_metadata 필드 추가
+- ✅ **프론트엔드 닉네임 선택 기능**: 화자 정보 확인 및 태깅 페이지에서 닉네임 선택 가능
+- ✅ **LangSmith 추적 자동 설정**: LANGSMITH_API_KEY 자동 인식 및 복사
+- ✅ **LLM 모델 호환성 개선**: gpt-5-mini temperature 이슈 해결
+- ✅ **멀티턴 요약 개선**: 더 다양하고 완전한 이전 분석 결과 요약

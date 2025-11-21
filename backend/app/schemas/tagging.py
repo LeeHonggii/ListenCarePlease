@@ -13,6 +13,7 @@ class SuggestedMapping(BaseModel):
     speaker_label: str  # SPEAKER_00, SPEAKER_01, ...
     suggested_name: Optional[str] = None  # 시스템 제안 이름
     nickname: Optional[str] = None  # LLM이 생성한 닉네임 (예: "진행 담당자", "기술 전문가")
+    final_name: Optional[str] = None  # 사용자가 확정한 이름
 
 
 class TaggingSuggestionResponse(BaseModel):

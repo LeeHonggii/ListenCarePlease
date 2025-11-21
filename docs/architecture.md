@@ -102,6 +102,7 @@
         2. **[5a~5c 내부 처리 - 2가지 방식 병렬 실행]**
             - **방식 1: 이름 기반 태깅 (LLM 대화 흐름 분석)**
                 - 이름 감지 (NER 결과 활용)
+                - **닉네임 생성 (LLM 기반 역할/특징 분석)** - NER와 동시 처리
                 - 전후 5문장 문맥 추출
                 - LLM 추론: "민서는 SPEAKER_00? SPEAKER_01?"
             - **방식 2: 역할 기반 클러스터링 (LLM 발화 패턴 분석)**
@@ -112,14 +113,15 @@
             - 모순 시 → needs_manual_review 플래그
         4. **[5d UI 제안]** 백엔드가 판단한 결과를 사용자에게 제시:
             - `detected_names`: 감지된 모든 이름 리스트
-            - `suggested_mappings`: 각 SPEAKER_XX에 대한 추천 이름 + 역할
+            - `detected_nicknames`: LLM이 생성한 닉네임 리스트 (역할/특징 기반)
+            - `suggested_mappings`: 각 SPEAKER_XX에 대한 추천 이름 + 닉네임 + 역할
             - `name_confidence`: LLM 판단 신뢰도
             - `role_confidence`: 역할 추론 신뢰도
             - `auto_matched`: 임베딩 자동 매칭 여부
             - `conflict_detected`: 모순 발견 여부
             - `needs_manual_review`: 수동 확인 필요 플래그
         5. **[5e 사용자 확정]** 사용자가 제안을 검토하고 수정/확정:
-            - Input: `{SPEAKER_00: "김민서", SPEAKER_01: "박철수"}`
+            - Input: `{speaker_count: 3, detected_names: ["민서", "인서"], detected_nicknames: ["진행 담당자", "기술 전문가"]}`
         6. **[프로필 저장]** 새 화자를 `user_speaker_profiles`에 저장
             - 다음 오디오에서 자동 매칭에 활용
         7. **[5f 최종 병합]** 확정된 이름으로 최종 transcript 생성:
@@ -491,7 +493,7 @@ services:
 
 ## 6. 진행 상황 요약 (Progress Summary)
 
-### 📅 최근 업데이트: 2025-11-18 (NER 및 DB 저장 구현 완료)
+### 📅 최근 업데이트: 2025-11-20 (닉네임 태깅 기능 통합 완료)
 
 #### ✅ 완료된 작업
 - **Step 1: Docker 환경 구축** (2025-11-10)
@@ -544,6 +546,34 @@ services:
         - 향후 멀티턴 LLM 추론에 활용 예정
     - **결과**: STT → Diarization → NER → DB 저장 파이프라인 E2E 성공
 
+- **🆕 닉네임 태깅 기능 통합** (2025-11-20)
+    - **LLM 기반 닉네임 생성**:
+        - `NicknameService`: 화자별 역할/특징 기반 닉네임 생성
+        - Smart Selection 알고리즘: 대표 발화 선택 (긴 발화, 키워드 발화, 시점별 발화)
+        - OpenAI GPT-4 API 호출로 닉네임 생성
+    - **DB 스키마 확장**:
+        - `SpeakerMapping.nickname`: String(100) - 생성된 닉네임 저장
+        - `SpeakerMapping.nickname_metadata`: JSON - 닉네임 메타데이터 (display_label, one_liner, keywords)
+        - `UserConfirmation.confirmed_nicknames`: JSON - 사용자가 확정한 닉네임 리스트
+    - **프론트엔드 통합**:
+        - 화자 정보 확인 페이지: 닉네임 선택/수정 기능 추가
+        - 태깅 페이지: 이름과 닉네임을 별도로 선택 가능
+        - 처리 상태 표시: "닉네임 태깅 중..." 단계 추가
+    - **Alembic 마이그레이션**:
+        - `add_nickname_fields_to_speaker_mapping.py`: nickname, nickname_metadata 컬럼 추가
+        - `c2b235bed6aa_add_confirmed_nicknames_to_user_.py`: confirmed_nicknames 컬럼 추가
+    - **결과**: NER와 동시에 닉네임 태깅 수행, 사용자가 이름과 닉네임을 모두 선택/확정 가능
+
+- **🆕 LangSmith 추적 기능 개선** (2025-11-20)
+    - `LANGSMITH_API_KEY` 자동 인식 및 `LANGCHAIN_API_KEY`로 복사
+    - API 키 없을 시 추적 자동 비활성화하여 에러 방지
+    - 앱 시작 시 추적 상태 로그 출력
+
+- **🆕 LLM 모델 호환성 개선** (2025-11-20)
+    - `gpt-5-mini-2025-08-07` 모델의 temperature 파라미터 이슈 해결
+    - 모델별 조건부 temperature 설정 (gpt-5-mini: 1.0, 기타: 0.3)
+    - 멀티턴 요약 개선: 최근 10개 결과 고려, 화자별 그룹화, 모든 스코어 포함
+
 #### 🔄 진행 중인 작업
 - 없음 (다음 단계: 멀티턴 LLM 추론 구현)
 
@@ -555,7 +585,7 @@ services:
 
 #### 📊 전체 진행률
 - **Phase 1 (웹 인프라):** 50% (3/6 단계 완료)
-- **Phase 2 (AI 모듈):** 70% (STT, Diarization, NER, DB 저장 완료 / LLM 추론 구현 대기 중)
+- **Phase 2 (AI 모듈):** 75% (STT, Diarization, NER, 닉네임 태깅, DB 저장 완료 / LLM 추론 구현 대기 중)
 - **Phase 3 (응용 기능):** 0% (대기 중)
 
 #### 📁 생성된 주요 파일

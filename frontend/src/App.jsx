@@ -7,6 +7,7 @@ import ThemeToggle from './components/ThemeToggle'
 import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
 import OAuthCallbackPage from './pages/OAuthCallbackPage'
+import DashboardPage from './pages/DashboardPage'
 import UploadPage from './pages/UploadPage'
 import ProcessingPage from './pages/ProcessingPage'
 import SpeakerInfoConfirmPage from './pages/SpeakerInfoConfirmPage'
@@ -35,6 +36,14 @@ function App() {
             {/* 보호된 라우트 */}
             <Route
               path="/"
+              element={
+                <ProtectedRoute>
+                  <DashboardPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/upload"
               element={
                 <ProtectedRoute>
                   <UploadPage />
