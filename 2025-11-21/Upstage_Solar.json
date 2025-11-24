@@ -1,0 +1,50 @@
+[
+    {
+        "word": "공구리",
+        "mean": "公工理 (공구리): Construction material, typically made by mixing cement, water, sand, and aggregate in specific proportions, and sometimes additional performance-enhancing materials. It serves as a fundamental component in various civil engineering projects and constructions. (Definition based on the provided Korean and English reference materials.)"
+    },
+    {
+        "word": "리그오브레전드",
+        "mean": "league of legends, often abbreviated as LoL, is a multiplayer online battle arena (MOBA) video game developed by Riot Games. It involves two teams of five players each, fighting to destroy the opposing team's \"Nexus\" while defending their own. Players choose unique champions with distinct abilities and playstyles, earning experience and gold through minion and monster kills, and purchasing items to strengthen their champion. The game's popularity has led to numerous spin-off media and a thriving professional eSports scene, with the League of Legends World Championship being the largest eSports league globally."
+    },
+    {
+        "word": "LLM",
+        "mean": "LLM (Large Language Model)는 neural network의 form을취한, Language Modeling을위한, vast numbers of parameters(often billions or more weights)를가진 model로, unsupervised learning(self-supervised learning)or supervised learning(with a limited labeled data)을통해, large quantities of unlabeled text로pre-trained된 model. Wikipedia에따르면, LLM은2018년경등장, various natural language processing tasks에적용. This shiftaway from task-specific, supervised learningparadigm, towards research in natural language processing."
+    },
+    {
+        "word": "HIV",
+        "mean": "HIV, or Human Immunodeficiency Virus, refers to a type of retrovirus that damages a human's immune system, leading to acquired immune deficiency syndrome (AIDS) if left untreated. It weakens the body's defense mechanism by targeting and depleting CD4+ T cells, macrophages, and dendritic cells. HIV and AIDS are distinct terms, with HIV being the virus itself, and AIDS being the advanced stage of the disease. Timely and appropriate treatment with antiretroviral therapy can significantly reduce the risk of AIDS-related death and prolong the lifespan of HIV-infected individuals."
+    },
+    {
+        "word": "Attention",
+        "mean": "Attention (注意)은 someone's awareness or focus on a particular stimulus, event, or information. It represents the cognitive resource allocated to process and maintain relevant information while ignoring irrelevant information. (Provided definition based on the given word \"Attention\" and the contextual understanding from the given scenario.)"
+    },
+    {
+        "word": "패킷",
+        "mean": "패킷(Packet)은 computer networking에서, data를 small fixed-size blocks로 segmenting한 unit을 refers합니다. This data segmentation helps in transmitting and receiving data efficiently over a network. (Definition: In computer networking, a packet refers to the unit of data that is segmented into small, fixed-size blocks, which allows for efficient transmission and reception of data over a network.)"
+    },
+    {
+        "word": "신경전달물질",
+        "mean": "신경전달물질(神經傳達物質)은 신경 세포에서 분비되어 근처 신경 세포나 근육에 신호 메세지를 보내는 물질을 의미합니다. (표준국어대사전) \n\n이러한 단순한 역할 밖에, 고전적인 예로 알려진 신경전달물질은 아세틸콜린과 같이 시냅스를 통해 인접한 신경"
+    },
+    {
+        "word": "필립스 곡선",
+        "mean": "필립스 곡선: (1)실업과 inflation rate (물가상승률)의 inverse relationship (반비례 관계)를 나타내는 graph (그래프)로, 실업 rate (실업률)가 줄면 inflation rate (물가상승률)가 ↑, and vice versa; (2) based on empirical studies across various countries and time periods, the Phillips curve demonstrates a negative correlation between unemployment rate and wage inflation rate, suggesting a trade-off between the two."
+    },
+    {
+        "word": "시그널링 패스웨이",
+        "mean": "시gnaling pathway (시그널링 패스웨이)는 생체 체내 신호 전달 과 cellular  responses의 연관된 단계 및 분자 (예: enzymes, receptors, transcription factors) 의 순서 를 의미합니다. (단, [Wikipedia] 에 따르면,  \"signaling pathway\"는  \"signal transduction pathway\" 로 쓰이며,  \"signal transduction\"은  \"stimulus\" 가  \"cell surface receptor\"에 의해"
+    },
+    {
+        "word": "리펙터링",
+        "mean": "리팩터링(refactoring)은소프트웨어 코드의 구조와 아키텍처를 개편하여 가독성, 유지보수성, 성능, 확장성 등 내부 특성을 향상시키는 프로세스를 의미합니다. 외부 동작과 소프트웨어의 기능은 변치않고, 이 작업은 버그를 없애거나 새로운 기능을 추가하지 않습니다. 리"
+    },
+    {
+        "word": "갓생",
+        "mean": "定義: \"갓생\"은 provided context를 base로, recently born individuals or newcomers in a particular context (e.g. a community, a field, etc.)를 指示할 때 用詞. 因此, 此 用詞 可能 具有 多種 意思, 但 本 提示 中 尚 沒有 文字 內 顯示, 所以 需 用 自身 知識 來 解釋. (Based on the instruction to define the meaning of \"갓생\" using Korean language and without providing a source, we can"
+    },
+    {
+        "word": "갓기",
+        "mean": "갓기 (Gotts)는provided reference (Wikipedia article or other reliable sources)가없어그의정확한의미를확인하거나추론할수없습니다. \n\n(In this case, since there is no provided reference or context, it's not possible to accurately define or infer the meaning of \"갓기\".)"
+    }
+]
