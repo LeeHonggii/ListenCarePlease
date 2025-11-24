@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, BigInteger, Float, DateTime, Enum, ForeignKey, Text
+from sqlalchemy import Column, Integer, String, BigInteger, Float, DateTime, Enum, ForeignKey, Text, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.db.base import Base
@@ -35,6 +35,11 @@ class AudioFile(Base):
     processing_progress = Column(Integer, default=0, nullable=False)  # 0-100
     processing_message = Column(String(200), nullable=True)  # "전처리 중...", "STT 진행 중..."
     error_message = Column(Text, nullable=True)  # 에러 발생 시 메시지
+
+    # RAG 벡터 DB 상태
+    rag_collection_name = Column(String(100), nullable=True)  # ChromaDB 컬렉션 이름 (예: "meeting_123")
+    rag_initialized = Column(Boolean, default=False, nullable=False)  # 벡터 DB 초기화 여부
+    rag_initialized_at = Column(DateTime(timezone=True), nullable=True)  # 벡터 DB 초기화 시간
 
     # 타임스탬프
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

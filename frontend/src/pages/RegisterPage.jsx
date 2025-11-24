@@ -1,9 +1,11 @@
 import React, { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { register } from '../services/authService'
+import { useTheme } from '../contexts/ThemeContext'
 
 const RegisterPage = () => {
   const navigate = useNavigate()
+  const { isDark, toggleTheme } = useTheme()
 
   const [formData, setFormData] = useState({
     email: '',
@@ -57,31 +59,38 @@ const RegisterPage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-950 dark:to-purple-950 transition-colors duration-300 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-bg-primary dark:bg-bg-primary-dark flex items-center justify-center p-4 transition-colors duration-300">
       <div className="w-full max-w-md">
+        {/* 테마 토글 버튼 */}
+        <div className="flex justify-end mb-4">
+          <button
+            onClick={toggleTheme}
+            className="p-2 rounded-lg bg-bg-tertiary dark:bg-bg-tertiary-dark hover:opacity-80 transition-all"
+            title={isDark ? '라이트 모드' : '다크 모드'}
+          >
+            {isDark ? (
+              <svg className="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clipRule="evenodd" />
+              </svg>
+            ) : (
+              <svg className="w-5 h-5 text-gray-700" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" />
+              </svg>
+            )}
+          </button>
+        </div>
+
         {/* 로고 및 제목 */}
         <div className="text-center mb-8">
-          <div className="inline-block p-3 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl mb-4">
-            <svg
-              className="w-12 h-12 text-white"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
-              />
-            </svg>
+          <div className="inline-block p-3 bg-accent-sage dark:bg-accent-teal rounded-2xl mb-4">
+            <span className="text-4xl">🎧</span>
           </div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">ListenCarePlease</h1>
-          <p className="text-gray-600 dark:text-gray-300">발화자 자동 태깅 및 요약 서비스</p>
+          <p className="text-gray-600 dark:text-gray-400">발화자 자동 태깅 및 요약 서비스</p>
         </div>
 
         {/* 회원가입 폼 */}
-        <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-lg rounded-3xl shadow-xl p-8 border border-gray-200 dark:border-gray-700">
+        <div className="bg-bg-tertiary dark:bg-bg-tertiary-dark rounded-3xl shadow-xl p-8 border border-bg-accent/30">
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">회원가입</h2>
 
           {error && (
@@ -102,7 +111,7 @@ const RegisterPage = () => {
                 value={formData.fullName}
                 onChange={handleChange}
                 required
-                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                className="w-full px-4 py-3 border border-bg-accent/30 bg-bg-secondary dark:bg-bg-secondary-dark text-gray-900 dark:text-white rounded-xl focus:ring-2 focus:ring-accent-sage dark:focus:ring-accent-teal focus:border-transparent transition"
                 placeholder="홍길동"
               />
             </div>
@@ -118,7 +127,7 @@ const RegisterPage = () => {
                 value={formData.email}
                 onChange={handleChange}
                 required
-                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                className="w-full px-4 py-3 border border-bg-accent/30 bg-bg-secondary dark:bg-bg-secondary-dark text-gray-900 dark:text-white rounded-xl focus:ring-2 focus:ring-accent-sage dark:focus:ring-accent-teal focus:border-transparent transition"
                 placeholder="your@email.com"
               />
             </div>
@@ -134,7 +143,7 @@ const RegisterPage = () => {
                 value={formData.password}
                 onChange={handleChange}
                 required
-                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                className="w-full px-4 py-3 border border-bg-accent/30 bg-bg-secondary dark:bg-bg-secondary-dark text-gray-900 dark:text-white rounded-xl focus:ring-2 focus:ring-accent-sage dark:focus:ring-accent-teal focus:border-transparent transition"
                 placeholder="최소 8자"
               />
             </div>
@@ -150,7 +159,7 @@ const RegisterPage = () => {
                 value={formData.confirmPassword}
                 onChange={handleChange}
                 required
-                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                className="w-full px-4 py-3 border border-bg-accent/30 bg-bg-secondary dark:bg-bg-secondary-dark text-gray-900 dark:text-white rounded-xl focus:ring-2 focus:ring-accent-sage dark:focus:ring-accent-teal focus:border-transparent transition"
                 placeholder="비밀번호 재입력"
               />
             </div>
@@ -159,18 +168,18 @@ const RegisterPage = () => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-gradient-to-r from-indigo-500 to-purple-600 text-white py-3 rounded-xl font-semibold hover:shadow-lg transform hover:-translate-y-0.5 transition disabled:opacity-50 disabled:cursor-not-allowed mt-6"
+              className="w-full bg-accent-sage dark:bg-accent-teal text-gray-900 dark:text-white py-3 rounded-xl font-semibold hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed mt-6"
             >
               {loading ? '가입 중...' : '회원가입'}
             </button>
           </form>
 
           {/* 로그인 링크 */}
-          <div className="mt-6 text-center text-sm text-gray-600 dark:text-gray-300">
+          <div className="mt-6 text-center text-sm text-gray-600 dark:text-gray-400">
             이미 계정이 있으신가요?{' '}
             <Link
               to="/login"
-              className="text-blue-600 dark:text-blue-400 font-semibold hover:underline"
+              className="text-accent-sage dark:text-accent-teal font-semibold hover:underline"
             >
               로그인
             </Link>

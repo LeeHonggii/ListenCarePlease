@@ -13,7 +13,11 @@
       "Bash(docker-compose down:*)",
       "Bash(docker start:*)",
       "Bash(tree:*)",
-      "Bash(alembic revision:*)"
+      "Bash(alembic revision:*)",
+      "Bash(docker-compose restart:*)",
+      "Bash(docker-compose logs:*)",
+      "Bash(docker-compose exec:*)",
+      "Bash(docker-compose ps:*)"
     ],
     "deny": [],
     "ask": []

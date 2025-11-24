@@ -127,14 +127,22 @@
         7. **[5f 최종 병합]** 확정된 이름으로 최종 transcript 생성:
             - Output: `[{speaker_name, start_time, end_time, text}, ...]`
 - **[8. 요약/RAG/자막]**
-    - **현황:** 선정 완료 (우선순위)
-    - **모델:** 상용 **LLM API** (GPT, Claude 등) 사용을 우선한다. (추후 로컬 모델 고려)
+    - **현황:** ✅ RAG 구현 완료 (2025-01-XX)
+    - **RAG 벡터 DB:** ChromaDB (로컬 파일 시스템 기반)
+        - **저장 위치:** `./chroma_db` 디렉토리
+        - **컬렉션 명명:** `meeting_{file_id}`
+        - **임베딩 모델:** OpenAI Embeddings (1536차원)
+    - **LLM:** GPT-4o (질문 분석 및 답변 생성)
+    - **주요 기능:**
+        - 벡터 DB 초기화 (버튼 클릭으로 수동 초기화)
+        - 질문 및 답변 (화자 필터 자동 감지)
+        - 화자명 변경 시 벡터 DB 자동 삭제 및 재생성
     - **I/O 구조:**
-        - Input: 5f의 최종 transcript
+        - Input: 5f의 최종 transcript (`FinalTranscript`)
         - Output:
-            - 요약: String (요약문)
-            - RAG: Vector DB 저장 (임베딩)
-            - 자막: String (.srt 또는 .vtt 포맷)
+            - 요약: String (요약문) - 구현 예정
+            - RAG: ChromaDB에 저장 + 질문/답변 API 제공 ✅
+            - 자막: String (.srt 또는 .vtt 포맷) - 구현 예정
 
 ### 3.3. 기술 스택
 
@@ -152,6 +160,9 @@
 - **Database:** MySQL 8.0
     - 사용자 정보, 파일 메타데이터, 처리 결과 저장
     - `user_speaker_profiles`: 화자 임베딩 저장 (자동 매칭용)
+- **Vector Database:** ChromaDB
+    - RAG용 벡터 저장소 (로컬 파일 시스템 기반)
+    - 회의록 세그먼트 임베딩 저장 및 유사도 검색
 - **Authentication:** OAuth 2.0 (Google, Kakao) + JWT
     - 하이브리드 인증 (이메일/비밀번호 + 소셜 로그인)
 - **Deployment:** Docker (docker-compose)
@@ -376,9 +387,12 @@ services:
 #### Phase 3: 응용 기능 고도화
 **목표:** 요약/RAG/자막 기능 완성도 향상
 - **작업 내용:**
-    - LLM 연동 (GPT/Claude API)
-    - Vector DB 구축 (RAG용 - Pinecone, Weaviate 등)
-    - 자막 포맷 변환 (.srt, .vtt)
+    - ✅ LLM 연동 (GPT-4o API)
+    - ✅ Vector DB 구축 (RAG용 - ChromaDB)
+    - ✅ RAG 시스템 구현 (초기화, 질문/답변, 화자 필터)
+    - ✅ 벡터 DB 상태 관리 (DB에 저장, 화자명 변경 시 자동 삭제)
+    - ⏳ 자막 포맷 변환 (.srt, .vtt)
+    - ⏳ 요약 기능 구현
     - 성능 최적화 및 에러 핸들링
 - **완료 조건:** 모든 응용 기능 안정적 동작
 
@@ -493,7 +507,7 @@ services:
 
 ## 6. 진행 상황 요약 (Progress Summary)
 
-### 📅 최근 업데이트: 2025-11-20 (닉네임 태깅 기능 통합 완료)
+### 📅 최근 업데이트: 2025-01-XX (RAG 시스템 구현 완료)
 
 #### ✅ 완료된 작업
 - **Step 1: Docker 환경 구축** (2025-11-10)
@@ -574,8 +588,23 @@ services:
     - 모델별 조건부 temperature 설정 (gpt-5-mini: 1.0, 기타: 0.3)
     - 멀티턴 요약 개선: 최근 10개 결과 고려, 화자별 그룹화, 모든 스코어 포함
 
+- **🆕 RAG 시스템 구현 완료** (2025-01-XX)
+    - **벡터 DB 전환**: Pinecone → ChromaDB (로컬 파일 시스템 기반)
+    - **주요 기능**:
+      - 벡터 DB 초기화 (버튼 클릭으로 수동 초기화)
+      - 질문 및 답변 (화자 필터 자동 감지)
+      - 화자 목록 조회
+      - RAG 상태 조회
+    - **상태 관리**: `audio_files` 테이블에 RAG 상태 저장
+      - `rag_collection_name`: 컬렉션 이름
+      - `rag_initialized`: 초기화 여부
+      - `rag_initialized_at`: 초기화 시간
+    - **자동화**: 화자명 변경 시 벡터 DB 자동 삭제 및 재생성
+    - **FinalTranscript 생성**: 태깅 확정 시 자동 생성, RAG 초기화 시 동적 생성 지원
+    - **질문 분석**: LLM 기반 화자 필터 자동 감지 기능
+
 #### 🔄 진행 중인 작업
-- 없음 (다음 단계: 멀티턴 LLM 추론 구현)
+- 없음 (다음 단계: 요약 및 자막 기능 구현)
 
 #### ⏭️ 다음 단계
 - **Step 3: 인증 시스템 구현**
@@ -586,7 +615,7 @@ services:
 #### 📊 전체 진행률
 - **Phase 1 (웹 인프라):** 50% (3/6 단계 완료)
 - **Phase 2 (AI 모듈):** 75% (STT, Diarization, NER, 닉네임 태깅, DB 저장 완료 / LLM 추론 구현 대기 중)
-- **Phase 3 (응용 기능):** 0% (대기 중)
+- **Phase 3 (응용 기능):** 33% (RAG 구현 완료 ✅ / 요약, 자막 구현 대기 중)
 
 #### 📁 생성된 주요 파일
 ```

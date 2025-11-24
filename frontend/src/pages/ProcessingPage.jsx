@@ -15,6 +15,13 @@ const ProcessingPage = () => {
   const whisperMode = location.state?.whisperMode || 'local';
   const diarizationMode = location.state?.diarizationMode || 'senko';
 
+  // 디버깅용 로그
+  useEffect(() => {
+    console.log('ProcessingPage - Location state:', location.state);
+    console.log('ProcessingPage - whisperMode:', whisperMode);
+    console.log('ProcessingPage - diarizationMode:', diarizationMode);
+  }, [location.state, whisperMode, diarizationMode]);
+
   useEffect(() => {
     // 이미 처리가 시작되었으면 중복 실행 방지
     if (hasStartedProcessing.current) {
@@ -92,13 +99,13 @@ const ProcessingPage = () => {
   }, [fileId, navigate, whisperMode, diarizationMode]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-950 dark:to-purple-950 flex items-center justify-center px-4 transition-colors duration-300">
+    <div className="p-8 flex items-center justify-center min-h-[calc(100vh-4rem)]">
       <div className="max-w-2xl w-full">
-        <div className="bg-white dark:bg-gray-800 rounded-2xl p-12 border-2 border-gray-200 dark:border-gray-700 shadow-2xl">
+        <div className="bg-bg-tertiary dark:bg-bg-tertiary-dark rounded-2xl p-12 border border-bg-accent/30">
           {/* 애니메이션 아이콘 */}
           <div className="flex justify-center mb-8">
             <div className="relative">
-              <div className="w-24 h-24 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full animate-pulse"></div>
+              <div className="w-24 h-24 bg-accent-blue rounded-full animate-pulse"></div>
               <div className="absolute inset-0 flex items-center justify-center">
                 <svg
                   className="w-12 h-12 text-white animate-spin"
@@ -133,23 +140,25 @@ const ProcessingPage = () => {
             </p>
           </div>
 
-          {/* 선택된 모델 정보 */}
-          <div className="mb-8 p-4 bg-indigo-50 dark:bg-indigo-900/30 rounded-lg border border-indigo-200 dark:border-indigo-800">
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <span className="text-indigo-600 dark:text-indigo-400 font-medium">🎙️ 화자 분리:</span>
-                <span className="ml-2 text-indigo-800 dark:text-indigo-200">
-                  {diarizationMode === 'senko' ? 'Senko (빠름)' : 'NeMo (정확)'}
-                </span>
-              </div>
-              <div>
-                <span className="text-indigo-600 dark:text-indigo-400 font-medium">📝 음성 인식:</span>
-                <span className="ml-2 text-indigo-800 dark:text-indigo-200">
-                  {whisperMode === 'local' ? 'Local Whisper' : 'OpenAI API'}
-                </span>
+          {/* 선택된 모델 정보 - location.state가 있을 때만 표시 */}
+          {location.state && (
+            <div className="mb-8 p-4 bg-bg-secondary dark:bg-bg-secondary-dark rounded-lg border border-bg-accent/30">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="text-gray-700 dark:text-gray-300 font-medium">🎙️ 화자 분리:</span>
+                  <span className="ml-2 text-gray-900 dark:text-white">
+                    {diarizationMode === 'senko' ? 'Senko (빠름)' : 'NeMo (정확)'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-gray-700 dark:text-gray-300 font-medium">📝 음성 인식:</span>
+                  <span className="ml-2 text-gray-900 dark:text-white">
+                    {whisperMode === 'local' ? 'Local Whisper' : 'OpenAI API'}
+                  </span>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           {/* 에러 메시지 */}
           {error && (
@@ -164,9 +173,9 @@ const ProcessingPage = () => {
               <span>진행률</span>
               <span>{progress}%</span>
             </div>
-            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-4 overflow-hidden">
+            <div className="w-full bg-bg-secondary dark:bg-bg-secondary-dark rounded-full h-4 overflow-hidden">
               <div
-                className="bg-gradient-to-r from-indigo-500 to-purple-500 h-full rounded-full transition-all duration-500 ease-out"
+                className="bg-accent-blue h-full rounded-full transition-all duration-500 ease-out"
                 style={{ width: `${progress}%` }}
               />
             </div>
@@ -206,8 +215,8 @@ const ProcessingPage = () => {
           </div>
 
           {/* 안내 메시지 */}
-          <div className="mt-8 p-4 bg-indigo-50 dark:bg-indigo-900/30 rounded-lg border border-indigo-200 dark:border-indigo-800">
-            <p className="text-indigo-700 dark:text-indigo-300 text-sm text-center">
+          <div className="mt-8 p-4 bg-blue-50 dark:bg-blue-900/30 rounded-lg border border-blue-200 dark:border-blue-800">
+            <p className="text-blue-700 dark:text-blue-300 text-sm text-center">
               💡 처리가 완료되면 자동으로 다음 단계로 이동합니다
             </p>
           </div>
@@ -216,7 +225,7 @@ const ProcessingPage = () => {
           <div className="mt-6 text-center">
             <button
               onClick={() => navigate('/')}
-              className="px-6 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg font-medium transition"
+              className="px-6 py-2 bg-bg-secondary dark:bg-bg-secondary-dark hover:bg-bg-accent/20 text-gray-700 dark:text-gray-200 rounded-lg font-medium transition"
             >
               홈으로 가기
             </button>

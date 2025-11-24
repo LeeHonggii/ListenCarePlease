@@ -81,6 +81,13 @@
 | duration | FLOAT | 오디오 길이 (초) |
 | mimetype | VARCHAR(50) | MIME 타입 (audio/mp3, audio/m4a 등) |
 | status | ENUM('uploaded', 'processing', 'completed', 'failed') | 처리 상태 |
+| processing_step | VARCHAR(50) | 처리 진행 단계 ('preprocessing', 'stt', 'diarization', 'ner', 'completed') |
+| processing_progress | INT | 처리 진행률 (0-100) |
+| processing_message | VARCHAR(200) | 처리 상태 메시지 |
+| error_message | TEXT | 에러 메시지 |
+| **rag_collection_name** | VARCHAR(100) | RAG 벡터 DB 컬렉션 이름 (예: "meeting_123") |
+| **rag_initialized** | BOOLEAN | RAG 벡터 DB 초기화 여부 |
+| **rag_initialized_at** | TIMESTAMP | RAG 벡터 DB 초기화 시간 |
 | created_at | TIMESTAMP | 업로드 시간 |
 | updated_at | TIMESTAMP | 수정 시간 |
 
@@ -353,10 +360,20 @@ I,O.md Step 6 결과 - 요약/자막
      - final_name="김민서", is_modified=false
      - final_name="이재형", is_modified=false
      - final_name="박지수", is_modified=true
+   → FinalTranscript 생성/업데이트 (Step 5f)
+     - STTResult + DiarizationResult + SpeakerMapping 조합
+     - 화자명 변경 감지 시 기존 RAG 벡터 DB 삭제
 
 9. 최종 병합
    → final_transcripts에 화자명 포함 대본 저장
    → audio_files.status = 'completed'
+
+10. RAG 초기화 (선택)
+   → POST /api/v1/rag/{file_id}/initialize
+   → FinalTranscript를 ChromaDB에 저장
+   → audio_files.rag_initialized = true
+   → audio_files.rag_collection_name = "meeting_{file_id}"
+   → audio_files.rag_initialized_at = 현재 시간
 
 10. 요약 생성 (선택)
    → summaries에 저장

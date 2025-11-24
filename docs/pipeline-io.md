@@ -402,3 +402,70 @@
     - **(요약):** 5f의 `text`를 모두 취합해 LLM에 전달 -> `String` (요약문)
     - **(RAG):** 5f의 각 항목을 Vector DB에 저장 (작업 수행)
     - **(자막):** 5f의 정보를 `String` (.srt 또는 .vtt 포맷)으로 변환
+
+#### 6.1. RAG (Retrieval Augmented Generation) 시스템
+
+**[✅ 현재 구현 상태 - 2025-01-XX]**
+
+**벡터 DB:** ChromaDB (로컬 파일 시스템 기반)
+- **저장 위치:** `./chroma_db` 디렉토리
+- **컬렉션 명명 규칙:** `meeting_{file_id}` (예: "meeting_123")
+- **임베딩 모델:** OpenAI Embeddings (text-embedding-ada-002, 1536차원)
+
+**주요 기능:**
+1. **벡터 DB 초기화** (`POST /api/v1/rag/{file_id}/initialize`)
+   - `FinalTranscript` 데이터를 ChromaDB에 저장
+   - 각 세그먼트를 Document로 변환하여 임베딩 생성
+   - 메타데이터: `speaker_name`, `speaker_label`, `start_time`, `end_time`, `segment_index`, `file_id`
+   - 초기화 상태를 `audio_files` 테이블에 저장:
+     - `rag_collection_name`: 컬렉션 이름
+     - `rag_initialized`: 초기화 여부 (Boolean)
+     - `rag_initialized_at`: 초기화 시간
+
+2. **질문 및 답변** (`POST /api/v1/rag/{file_id}/chat`)
+   - 사용자 질문을 벡터 검색으로 관련 세그먼트 찾기
+   - 화자 필터 자동 감지 (LLM 기반 질문 분석)
+   - 유사도 기반 검색 (기본 k=5)
+   - LLM (GPT-4o)을 사용하여 컨텍스트 기반 답변 생성
+   - 답변과 함께 참고한 발화 세그먼트 반환
+
+3. **화자 목록 조회** (`GET /api/v1/rag/{file_id}/speakers`)
+   - `FinalTranscript`에서 고유 화자 이름 목록 반환
+
+4. **RAG 상태 조회** (`GET /api/v1/rag/{file_id}/status`)
+   - 벡터 DB 초기화 상태 확인
+   - 컬렉션 이름, 초기화 시간 반환
+
+5. **벡터 DB 삭제** (`DELETE /api/v1/rag/{file_id}`)
+   - ChromaDB 컬렉션 삭제
+   - `audio_files` 테이블의 RAG 상태 초기화
+
+**데이터 흐름:**
+```
+1. 태깅 확정 (POST /api/v1/tagging/confirm)
+   → FinalTranscript 생성/업데이트
+   → 기존 벡터 DB가 초기화되어 있으면 자동 삭제 (화자명 변경 감지)
+
+2. RAG 초기화 (POST /api/v1/rag/{file_id}/initialize)
+   → FinalTranscript 조회
+   → 없으면 STTResult + DiarizationResult + SpeakerMapping 조합하여 동적 생성
+   → ChromaDB에 저장
+   → audio_files.rag_initialized = true
+
+3. 질문 및 답변 (POST /api/v1/rag/{file_id}/chat)
+   → audio_files.rag_initialized 확인
+   → ChromaDB에서 유사도 검색
+   → 화자 필터 자동 감지 (선택적)
+   → LLM으로 답변 생성
+```
+
+**화자명 변경 처리:**
+- 태깅 확정 시 화자명 변경 감지
+- 변경된 경우 기존 벡터 DB 컬렉션 자동 삭제
+- `audio_files.rag_initialized = false`로 설정
+- 사용자가 RAG를 다시 사용하려면 초기화 필요
+
+**질문 분석 기능:**
+- LLM을 사용하여 질문에서 화자 이름 자동 추출
+- 유사도 기반 화자 매칭 (SequenceMatcher 사용)
+- 화자 필터가 감지되면 자동으로 필터링된 검색 수행

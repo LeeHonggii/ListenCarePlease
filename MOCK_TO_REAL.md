@@ -5,6 +5,19 @@
 현재 프로젝트는 **Phase 1 (웹 인프라 구축)** 단계로, 모든 AI 처리 로직이 **Mock 데이터**로 구현되어 있습니다.
 이 문서는 Phase 2로 진입할 때 Mock 데이터를 실제 AI 모델로 교체하는 방법을 설명합니다.
 
+## 최신 업데이트 (2025-11-22)
+
+**실제 구현 완료:**
+- ✅ STT (Whisper - Local/API 모드)
+- ✅ Diarization (Senko / NeMo)
+- ✅ 전처리 (VAD, 노이즈 제거, 청크 분할)
+- ✅ NER (이름 감지)
+- ✅ 화자-이름 매칭
+
+**추가 예정:**
+- 🎯 **RAG 시스템** (실제 구현)
+- 📊 **더미 UI 기능들** (회의 템플릿, 정량적 차트, 날짜 입력 등)
+
 ---
 
 ## 현재 Mock 데이터 사용 위치
@@ -506,7 +519,381 @@ class MergeService:
 
 ---
 
-### Step 6: 요약 기능 구현 (LLM)
+### Step 6: RAG 시스템 구현 (우선순위 높음)
+
+#### 개요
+RAG (Retrieval-Augmented Generation)는 회의록 전체를 벡터 DB에 저장하고, 사용자 질문에 대해 관련 대화 구간을 검색하여 LLM에 컨텍스트를 제공하는 시스템입니다.
+
+#### 아키텍처
+```
+[회의록 대본]
+    ↓
+[청크 분할] (발화 단위 또는 시간 단위)
+    ↓
+[임베딩 생성] (SentenceTransformer)
+    ↓
+[벡터 DB 저장] (ChromaDB / FAISS)
+    ↓
+[사용자 질문] → [유사도 검색] → [Top-K 발화 추출]
+    ↓
+[LLM 답변 생성] (검색된 발화를 컨텍스트로 제공)
+```
+
+#### 파일 위치
+```
+backend/app/services/rag_service.py (신규 생성)
+backend/app/services/vector_store.py (신규 생성)
+backend/app/api/v1/rag.py (신규 생성)
+```
+
+#### 구현 내용
+
+##### 1. 벡터 스토어 서비스
+```python
+# backend/app/services/vector_store.py
+
+import chromadb
+from sentence_transformers import SentenceTransformer
+from typing import List, Dict
+
+class VectorStoreService:
+    def __init__(self):
+        # ChromaDB 클라이언트 초기화
+        self.client = chromadb.PersistentClient(path="/app/data/chromadb")
+
+        # 임베딩 모델 (한국어 지원)
+        self.embedding_model = SentenceTransformer('jhgan/ko-sroberta-multitask')
+
+    def create_collection(self, file_id: str):
+        """파일별 컬렉션 생성"""
+        collection_name = f"meeting_{file_id}"
+        return self.client.create_collection(
+            name=collection_name,
+            metadata={"hnsw:space": "cosine"}
+        )
+
+    def add_transcripts(self, file_id: str, transcripts: List[Dict]):
+        """
+        대본을 벡터 DB에 저장
+
+        Args:
+            file_id: 파일 ID
+            transcripts: [
+                {
+                    "speaker_name": "김민서",
+                    "text": "오늘 회의 안건은...",
+                    "start_time": 0.4,
+                    "end_time": 3.5
+                },
+                ...
+            ]
+        """
+        collection = self.client.get_collection(f"meeting_{file_id}")
+
+        # 각 발화를 문서로 저장
+        documents = []
+        metadatas = []
+        ids = []
+
+        for i, segment in enumerate(transcripts):
+            # 화자 이름 + 발화 내용을 하나의 문서로
+            doc_text = f"{segment['speaker_name']}: {segment['text']}"
+            documents.append(doc_text)
+
+            metadatas.append({
+                "speaker": segment['speaker_name'],
+                "start_time": segment['start_time'],
+                "end_time": segment['end_time'],
+                "index": i
+            })
+
+            ids.append(f"{file_id}_{i}")
+
+        # 임베딩 생성 및 저장
+        embeddings = self.embedding_model.encode(documents).tolist()
+
+        collection.add(
+            embeddings=embeddings,
+            documents=documents,
+            metadatas=metadatas,
+            ids=ids
+        )
+
+    def search(self, file_id: str, query: str, top_k: int = 5) -> List[Dict]:
+        """
+        질문과 유사한 발화 검색
+
+        Args:
+            file_id: 파일 ID
+            query: 사용자 질문
+            top_k: 반환할 발화 개수
+
+        Returns:
+            [
+                {
+                    "speaker": "김민서",
+                    "text": "오늘 회의 안건은...",
+                    "start_time": 0.4,
+                    "end_time": 3.5,
+                    "score": 0.87
+                },
+                ...
+            ]
+        """
+        collection = self.client.get_collection(f"meeting_{file_id}")
+
+        # 질문 임베딩 생성
+        query_embedding = self.embedding_model.encode([query]).tolist()
+
+        # 유사도 검색
+        results = collection.query(
+            query_embeddings=query_embedding,
+            n_results=top_k
+        )
+
+        # 결과 포맷팅
+        formatted_results = []
+        for i in range(len(results['ids'][0])):
+            metadata = results['metadatas'][0][i]
+            document = results['documents'][0][i]
+            distance = results['distances'][0][i]
+
+            # 거리를 유사도 점수로 변환 (cosine distance -> similarity)
+            similarity = 1 - distance
+
+            formatted_results.append({
+                "speaker": metadata['speaker'],
+                "text": document.split(": ", 1)[1],  # "화자: 내용"에서 내용만 추출
+                "start_time": metadata['start_time'],
+                "end_time": metadata['end_time'],
+                "score": round(similarity, 2)
+            })
+
+        return formatted_results
+```
+
+##### 2. RAG 서비스
+```python
+# backend/app/services/rag_service.py
+
+from openai import OpenAI
+from typing import List, Dict
+from .vector_store import VectorStoreService
+
+class RAGService:
+    def __init__(self):
+        self.vector_store = VectorStoreService()
+        self.llm_client = OpenAI(api_key="YOUR_API_KEY")
+
+    def answer_question(self, file_id: str, question: str) -> Dict:
+        """
+        RAG 기반 질문 답변
+
+        Args:
+            file_id: 파일 ID
+            question: 사용자 질문
+
+        Returns:
+            {
+                "answer": "LLM이 생성한 답변",
+                "sources": [
+                    {
+                        "speaker": "김민서",
+                        "text": "관련 발화 내용",
+                        "start_time": 0.4,
+                        "end_time": 3.5,
+                        "score": 0.87
+                    },
+                    ...
+                ]
+            }
+        """
+        # 1. 벡터 DB에서 관련 발화 검색
+        relevant_segments = self.vector_store.search(
+            file_id=file_id,
+            query=question,
+            top_k=5
+        )
+
+        # 2. 컨텍스트 구성
+        context = "\n\n".join([
+            f"[{seg['start_time']:.1f}s - {seg['end_time']:.1f}s] "
+            f"{seg['speaker']}: {seg['text']}"
+            for seg in relevant_segments
+        ])
+
+        # 3. LLM 프롬프트 생성
+        prompt = f"""
+다음은 회의록의 일부입니다. 사용자의 질문에 대해 회의록 내용을 기반으로 답변해주세요.
+
+<회의록>
+{context}
+</회의록>
+
+<질문>
+{question}
+</질문>
+
+답변 시 다음 규칙을 따르세요:
+1. 회의록에 명시된 내용만 답변하세요.
+2. 추측이나 외부 지식은 사용하지 마세요.
+3. 답변 시 "XX초 구간에서 OO님이 언급했듯이..." 형식으로 출처를 밝히세요.
+4. 회의록에 관련 내용이 없으면 "회의록에서 관련 내용을 찾을 수 없습니다"라고 답변하세요.
+"""
+
+        # 4. LLM 호출
+        response = self.llm_client.chat.completions.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": "당신은 회의록 분석 전문가입니다."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3  # 낮은 온도로 정확성 높임
+        )
+
+        answer = response.choices[0].message.content
+
+        return {
+            "answer": answer,
+            "sources": relevant_segments
+        }
+```
+
+##### 3. API 엔드포인트
+```python
+# backend/app/api/v1/rag.py
+
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from app.services.rag_service import RAGService
+from sqlalchemy.orm import Session
+from app.api.deps import get_db
+from fastapi import Depends
+
+router = APIRouter()
+rag_service = RAGService()
+
+class QuestionRequest(BaseModel):
+    question: str
+
+class AnswerResponse(BaseModel):
+    answer: str
+    sources: list
+
+@router.post("/rag/{file_id}/index")
+async def index_transcript(file_id: str, db: Session = Depends(get_db)):
+    """
+    회의록을 벡터 DB에 인덱싱
+    (태깅 완료 후 자동 호출 또는 수동 트리거)
+    """
+    # DB에서 최종 대본 가져오기
+    from app.models.stt import STTResult
+
+    stt_results = db.query(STTResult).filter(
+        STTResult.audio_file_id == int(file_id)
+    ).order_by(STTResult.start_time).all()
+
+    if not stt_results:
+        raise HTTPException(status_code=404, detail="대본을 찾을 수 없습니다.")
+
+    # 대본 포맷 변환
+    transcripts = [
+        {
+            "speaker_name": result.speaker_name or "Unknown",
+            "text": result.text,
+            "start_time": result.start_time,
+            "end_time": result.end_time
+        }
+        for result in stt_results
+    ]
+
+    # 벡터 DB에 저장
+    try:
+        rag_service.vector_store.create_collection(file_id)
+        rag_service.vector_store.add_transcripts(file_id, transcripts)
+
+        return {
+            "message": "인덱싱 완료",
+            "indexed_segments": len(transcripts)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"인덱싱 실패: {str(e)}")
+
+@router.post("/rag/{file_id}/ask", response_model=AnswerResponse)
+async def ask_question(file_id: str, request: QuestionRequest):
+    """
+    회의록에 대해 질문하기
+    """
+    try:
+        result = rag_service.answer_question(file_id, request.question)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"질문 처리 실패: {str(e)}")
+```
+
+#### requirements.txt 추가
+```txt
+sentence-transformers==2.2.2
+chromadb==0.4.22
+openai>=1.0.0
+```
+
+#### 사용 흐름
+1. **인덱싱**: 태깅 완료 후 `POST /api/v1/rag/{file_id}/index` 호출
+2. **질문**: 결과 페이지에서 `POST /api/v1/rag/{file_id}/ask` 호출
+
+#### 프론트엔드 통합 예시
+```jsx
+// ResultPageNew.jsx에 RAG 탭 추가
+
+const [question, setQuestion] = useState('')
+const [answer, setAnswer] = useState(null)
+const [isLoading, setIsLoading] = useState(false)
+
+const handleAskQuestion = async () => {
+  setIsLoading(true)
+  try {
+    const response = await axios.post(
+      `${API_BASE_URL}/api/v1/rag/${fileId}/ask`,
+      { question }
+    )
+    setAnswer(response.data)
+  } catch (error) {
+    console.error('질문 실패:', error)
+  } finally {
+    setIsLoading(false)
+  }
+}
+
+// UI
+<div>
+  <input
+    value={question}
+    onChange={(e) => setQuestion(e.target.value)}
+    placeholder="회의록에 대해 질문하세요..."
+  />
+  <button onClick={handleAskQuestion}>질문하기</button>
+
+  {answer && (
+    <div>
+      <h3>답변:</h3>
+      <p>{answer.answer}</p>
+
+      <h4>출처:</h4>
+      {answer.sources.map((src, i) => (
+        <div key={i}>
+          [{src.start_time}s] {src.speaker}: {src.text}
+          (유사도: {src.score})
+        </div>
+      ))}
+    </div>
+  )}
+</div>
+```
+
+---
+
+### Step 7: 요약 기능 구현 (LLM) - 선택적
 
 #### 파일 위치
 ```

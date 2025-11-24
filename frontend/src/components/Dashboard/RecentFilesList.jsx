@@ -22,7 +22,7 @@ export default function RecentFilesList({ files, onRefresh, onFileClick, onDelet
       processing: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
       failed: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
       uploaded: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200',
-      tagging_pending: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
+      tagging_pending: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
       tagging_done: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
     }
 
@@ -213,7 +213,7 @@ export default function RecentFilesList({ files, onRefresh, onFileClick, onDelet
                       e.stopPropagation()
                       navigate(`/tagging/${file.id}`)
                     }}
-                    className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-purple-700 bg-purple-100 hover:bg-purple-200 dark:bg-purple-900 dark:text-purple-200 dark:hover:bg-purple-800"
+                    className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-orange-700 bg-orange-100 hover:bg-orange-200 dark:bg-orange-900 dark:text-orange-200 dark:hover:bg-orange-800"
                   >
                     태깅하기
                   </button>

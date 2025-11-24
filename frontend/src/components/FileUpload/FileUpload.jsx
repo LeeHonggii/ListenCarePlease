@@ -83,12 +83,19 @@ const FileUpload = ({ onUploadSuccess }) => {
       });
 
       // 업로드 성공 - 모드 정보 포함
+      console.log('FileUpload - Upload success');
+      console.log('FileUpload - whisperMode:', whisperMode);
+      console.log('FileUpload - diarizationMode:', diarizationMode);
+      console.log('FileUpload - result:', result);
+
       if (onUploadSuccess) {
-        onUploadSuccess({
+        const uploadData = {
           ...result,
           whisperMode,
           diarizationMode
-        });
+        };
+        console.log('FileUpload - Calling onUploadSuccess with:', uploadData);
+        onUploadSuccess(uploadData);
       }
     } catch (err) {
       console.error('Upload error:', err);
@@ -115,8 +122,8 @@ const FileUpload = ({ onUploadSuccess }) => {
             relative border-4 border-dashed rounded-2xl p-12 text-center cursor-pointer
             transition-all duration-300 ease-in-out
             ${isDragging
-              ? 'border-primary-500 bg-primary-50 scale-105'
-              : 'border-gray-300 bg-white hover:border-primary-400 hover:bg-gray-50'
+              ? 'border-accent-blue bg-blue-50 dark:bg-blue-900/20 scale-105'
+              : 'border-bg-accent bg-bg-tertiary dark:bg-bg-tertiary-dark hover:border-accent-blue'
             }
           `}
           onDragEnter={handleDragEnter}
@@ -135,7 +142,7 @@ const FileUpload = ({ onUploadSuccess }) => {
 
           <div className="flex flex-col items-center space-y-4">
             <svg
-              className="w-20 h-20 text-primary-500"
+              className="w-20 h-20 text-accent-blue"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -149,22 +156,22 @@ const FileUpload = ({ onUploadSuccess }) => {
             </svg>
 
             <div>
-              <p className="text-xl font-semibold text-gray-700 mb-2">
+              <p className="text-xl font-semibold text-gray-700 dark:text-gray-200 mb-2">
                 오디오 파일을 드래그하거나 클릭하세요
               </p>
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-gray-500 dark:text-gray-400">
                 MP3, M4A, WAV, OGG, FLAC (최대 100MB)
               </p>
             </div>
           </div>
         </div>
       ) : (
-        <div className="bg-white dark:bg-gray-800 rounded-2xl p-8 shadow-lg border border-gray-200 dark:border-gray-700">
+        <div className="bg-bg-tertiary dark:bg-bg-tertiary-dark rounded-2xl p-8 shadow-lg border border-bg-accent/30">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center space-x-4">
-              <div className="w-12 h-12 bg-primary-100 dark:bg-primary-900 rounded-full flex items-center justify-center">
+              <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center">
                 <svg
-                  className="w-6 h-6 text-primary-600 dark:text-primary-400"
+                  className="w-6 h-6 text-accent-blue"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -208,8 +215,8 @@ const FileUpload = ({ onUploadSuccess }) => {
                   onClick={() => setDiarizationMode('senko')}
                   className={`p-4 rounded-lg border-2 transition-all ${
                     diarizationMode === 'senko'
-                      ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
-                      : 'border-gray-200 dark:border-gray-700 hover:border-primary-300'
+                      ? 'border-accent-blue bg-blue-50 dark:bg-blue-900/20'
+                      : 'border-bg-accent/30 hover:border-accent-blue'
                   }`}
                 >
                   <div className="text-left">
@@ -221,8 +228,8 @@ const FileUpload = ({ onUploadSuccess }) => {
                   onClick={() => setDiarizationMode('nemo')}
                   className={`p-4 rounded-lg border-2 transition-all ${
                     diarizationMode === 'nemo'
-                      ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
-                      : 'border-gray-200 dark:border-gray-700 hover:border-primary-300'
+                      ? 'border-accent-blue bg-blue-50 dark:bg-blue-900/20'
+                      : 'border-bg-accent/30 hover:border-accent-blue'
                   }`}
                 >
                   <div className="text-left">
@@ -243,8 +250,8 @@ const FileUpload = ({ onUploadSuccess }) => {
                   onClick={() => setWhisperMode('local')}
                   className={`p-4 rounded-lg border-2 transition-all ${
                     whisperMode === 'local'
-                      ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
-                      : 'border-gray-200 dark:border-gray-700 hover:border-primary-300'
+                      ? 'border-accent-blue bg-blue-50 dark:bg-blue-900/20'
+                      : 'border-bg-accent/30 hover:border-accent-blue'
                   }`}
                 >
                   <div className="text-left">
@@ -256,8 +263,8 @@ const FileUpload = ({ onUploadSuccess }) => {
                   onClick={() => setWhisperMode('api')}
                   className={`p-4 rounded-lg border-2 transition-all ${
                     whisperMode === 'api'
-                      ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
-                      : 'border-gray-200 dark:border-gray-700 hover:border-primary-300'
+                      ? 'border-accent-blue bg-blue-50 dark:bg-blue-900/20'
+                      : 'border-bg-accent/30 hover:border-accent-blue'
                   }`}
                 >
                   <div className="text-left">
@@ -271,13 +278,13 @@ const FileUpload = ({ onUploadSuccess }) => {
 
           {isUploading && (
             <div className="mb-6">
-              <div className="flex justify-between text-sm text-gray-600 mb-2">
+              <div className="flex justify-between text-sm text-gray-600 dark:text-gray-300 mb-2">
                 <span>업로드 중...</span>
                 <span>{uploadProgress}%</span>
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
                 <div
-                  className="bg-gradient-to-r from-primary-500 to-secondary-500 h-full rounded-full transition-all duration-300"
+                  className="bg-accent-blue h-full rounded-full transition-all duration-300"
                   style={{ width: `${uploadProgress}%` }}
                 />
               </div>
@@ -285,16 +292,16 @@ const FileUpload = ({ onUploadSuccess }) => {
           )}
 
           {error && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-sm text-red-600">{error}</p>
+            <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+              <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
             </div>
           )}
 
           {!isUploading && (
             <button
               onClick={handleUpload}
-              className="w-full bg-gradient-to-r from-primary-500 to-secondary-500 text-white font-semibold py-3 px-6 rounded-lg
-                       hover:from-primary-600 hover:to-secondary-600 transform hover:scale-105 transition-all duration-200
+              className="w-full bg-accent-blue text-white font-semibold py-3 px-6 rounded-lg
+                       hover:bg-blue-600 transform hover:scale-105 transition-all duration-200
                        shadow-lg hover:shadow-xl"
             >
               분석 시작하기
@@ -304,8 +311,8 @@ const FileUpload = ({ onUploadSuccess }) => {
       )}
 
       {error && !selectedFile && (
-        <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-          <p className="text-sm text-red-600">{error}</p>
+        <div className="mt-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+          <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
         </div>
       )}
     </div>

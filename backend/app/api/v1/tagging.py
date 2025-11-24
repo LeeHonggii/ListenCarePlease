@@ -414,6 +414,31 @@ async def confirm_tagging(
     if not audio_file:
         raise HTTPException(status_code=404, detail="파일을 찾을 수 없습니다")
 
+    # 화자명 변경 감지 및 벡터 DB 삭제
+    needs_rag_reinit = False
+    if audio_file.rag_initialized:
+        # 기존 매핑과 비교하여 변경 여부 확인
+        existing_mappings = db.query(SpeakerMapping).filter(
+            SpeakerMapping.audio_file_id == audio_file.id
+        ).all()
+        existing_final_names = {sm.speaker_label: sm.final_name for sm in existing_mappings if sm.final_name}
+        
+        # 새로운 매핑과 비교
+        for mapping in request.mappings:
+            old_name = existing_final_names.get(mapping.speaker_label)
+            if old_name and old_name != mapping.final_name:
+                needs_rag_reinit = True
+                break
+        
+        # 벡터 DB 삭제
+        if needs_rag_reinit:
+            from app.services.rag_service import RAGService
+            rag_service = RAGService()
+            rag_service.delete_collection(str(audio_file.id))
+            audio_file.rag_initialized = False
+            audio_file.rag_collection_name = None
+            audio_file.rag_initialized_at = None
+
     # SpeakerMapping 업데이트
     for mapping in request.mappings:
         speaker_mapping = db.query(SpeakerMapping).filter(
@@ -444,11 +469,62 @@ async def confirm_tagging(
             )
             db.add(speaker_mapping)
 
+    # FinalTranscript 생성/업데이트 (Step 5f)
+    from app.models.transcript import FinalTranscript
+    from app.models.stt import STTResult
+    from app.models.diarization import DiarizationResult
+    
+    # 기존 FinalTranscript 삭제 (재생성을 위해)
+    db.query(FinalTranscript).filter(
+        FinalTranscript.audio_file_id == audio_file.id
+    ).delete()
+    
+    # STT 결과 조회
+    stt_results = db.query(STTResult).filter(
+        STTResult.audio_file_id == audio_file.id
+    ).order_by(STTResult.start_time).all()
+
+    # Diarization 결과 조회
+    diar_results = db.query(DiarizationResult).filter(
+        DiarizationResult.audio_file_id == audio_file.id
+    ).order_by(DiarizationResult.start_time).all()
+
+    # SpeakerMapping에서 final_name 가져오기
+    speaker_mappings = db.query(SpeakerMapping).filter(
+        SpeakerMapping.audio_file_id == audio_file.id
+    ).all()
+    mappings = {sm.speaker_label: sm.final_name for sm in speaker_mappings if sm.final_name}
+
+    # FinalTranscript 생성
+    for idx, stt in enumerate(stt_results):
+        speaker_label = "UNKNOWN"
+        for diar in diar_results:
+            if diar.start_time <= stt.start_time < diar.end_time:
+                speaker_label = diar.speaker_label
+                break
+
+        # final_name 매핑 적용 (없으면 speaker_label 사용)
+        speaker_name = mappings.get(speaker_label, speaker_label)
+
+        final_transcript = FinalTranscript(
+            audio_file_id=audio_file.id,
+            segment_index=idx,
+            speaker_name=speaker_name,
+            start_time=stt.start_time,
+            end_time=stt.end_time,
+            text=stt.text
+        )
+        db.add(final_transcript)
+
     db.commit()
+
+    response_message = "화자 태깅이 완료되었습니다."
+    if needs_rag_reinit:
+        response_message += " 화자명이 변경되어 벡터 DB가 삭제되었습니다. RAG 기능을 사용하려면 다시 초기화해주세요."
 
     return TaggingConfirmResponse(
         file_id=request.file_id,
-        message="화자 태깅이 완료되었습니다.",
+        message=response_message,
         status="confirmed"
     )
 
@@ -519,6 +595,7 @@ async def get_tagging_result(file_id: str, db: Session = Depends(get_db)):
 
     return {
         "file_id": file_id,
+        "audio_file_id": audio_file.id,  # RAG 등에서 사용할 숫자 ID
         "status": "confirmed",
         "mappings": mappings,
         "final_transcript": final_transcript,

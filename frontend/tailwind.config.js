@@ -8,29 +8,26 @@ export default {
   theme: {
     extend: {
       colors: {
-        primary: {
-          50: '#f0f9ff',
-          100: '#e0f2fe',
-          200: '#bae6fd',
-          300: '#7dd3fc',
-          400: '#38bdf8',
-          500: '#0ea5e9',
-          600: '#0284c7',
-          700: '#0369a1',
-          800: '#075985',
-          900: '#0c4a6e',
-        },
-        secondary: {
-          50: '#faf5ff',
-          100: '#f3e8ff',
-          200: '#e9d5ff',
-          300: '#d8b4fe',
-          400: '#c084fc',
-          500: '#a855f7',
-          600: '#9333ea',
-          700: '#7e22ce',
-          800: '#6b21a8',
-          900: '#581c87',
+        // 배경색 시스템
+        'bg-primary': '#F9F8F6',    // Light mode
+        'bg-secondary': '#EFE9E3',
+        'bg-tertiary': '#D9CFC7',
+        'bg-accent': '#C9B59C',
+
+        // Dark mode 배경색
+        'bg-primary-dark': '#37353E',
+        'bg-secondary-dark': '#2D2B34',
+        'bg-tertiary-dark': '#413F48',
+        'bg-accent-dark': '#4B4952',
+
+        // 액센트 컬러 (버튼, 링크 등)
+        accent: {
+          blue: '#4A90E2',
+          green: '#7AC943',
+          orange: '#F5A623',
+          red: '#E94B3C',
+          teal: '#D4A89A',  // 다크 모드 선택 색상 (라이트 모드와 조화)
+          sage: '#F2C9B3',  // 라이트 모드 선택 색상
         },
       },
       fontFamily: {

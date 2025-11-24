@@ -77,13 +77,13 @@ export default function TaggingAnalyzingPage() {
   }, [fileId, navigate])
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-950 dark:to-purple-950 transition-colors duration-300 flex items-center justify-center px-4">
+    <div className="p-8 flex items-center justify-center min-h-[calc(100vh-4rem)]">
       <div className="max-w-2xl w-full">
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-12">
+        <div className="bg-bg-tertiary dark:bg-bg-tertiary-dark rounded-2xl shadow-xl p-12 border border-bg-accent/30">
           {/* 애니메이션 아이콘 */}
           <div className="flex justify-center mb-8">
             <div className="relative">
-              <div className="w-24 h-24 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full animate-pulse"></div>
+              <div className="w-24 h-24 bg-accent-blue rounded-full animate-pulse"></div>
               <div className="absolute inset-0 flex items-center justify-center">
                 <svg
                   className="w-12 h-12 text-white animate-spin"
@@ -117,8 +117,8 @@ export default function TaggingAnalyzingPage() {
               {status}
             </p>
             {error && (
-              <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-                <p className="text-red-800">{error}</p>
+              <div className="mt-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                <p className="text-red-800 dark:text-red-400">{error}</p>
                 <button
                   onClick={() => navigate(`/tagging/${fileId}`)}
                   className="mt-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
@@ -140,21 +140,21 @@ export default function TaggingAnalyzingPage() {
             ].map((step, index) => (
               <div
                 key={index}
-                className="flex items-center space-x-3 p-3 bg-indigo-50 rounded-lg animate-pulse"
+                className="flex items-center space-x-3 p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg animate-pulse"
                 style={{ animationDelay: `${index * 0.2}s` }}
               >
                 <span className="text-2xl">{step.emoji}</span>
-                <span className="text-gray-700 font-medium">{step.label}</span>
+                <span className="text-gray-700 dark:text-gray-200 font-medium">{step.label}</span>
                 <div className="ml-auto">
-                  <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                  <div className="w-6 h-6 border-2 border-accent-blue dark:border-blue-400 border-t-transparent rounded-full animate-spin"></div>
                 </div>
               </div>
             ))}
           </div>
 
           {/* 안내 메시지 */}
-          <div className="mt-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <p className="text-sm text-blue-800 text-center">
+          <div className="mt-8 p-4 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg">
+            <p className="text-sm text-blue-800 dark:text-blue-300 text-center">
               💡 잠시만 기다려주세요. I,O.md의 멀티턴 LLM 분석이 진행됩니다.
             </p>
           </div>
@@ -163,7 +163,7 @@ export default function TaggingAnalyzingPage() {
           <div className="mt-6 text-center">
             <button
               onClick={() => navigate('/')}
-              className="px-6 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg font-medium transition"
+              className="px-6 py-2 bg-bg-secondary dark:bg-bg-secondary-dark hover:bg-bg-accent/20 text-gray-700 dark:text-gray-200 rounded-lg font-medium transition"
             >
               홈으로 가기
             </button>

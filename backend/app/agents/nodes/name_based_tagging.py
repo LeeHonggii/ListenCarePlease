@@ -4,7 +4,7 @@ name_based_tagging_node
 """
 from typing import List, Dict
 from langchain_openai import ChatOpenAI
-from langchain.output_parsers import PydanticOutputParser
+from langchain_core.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field
 from app.core.config import settings
 from app.agents.state import AgentState

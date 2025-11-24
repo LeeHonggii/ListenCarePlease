@@ -19,6 +19,7 @@ export default function ResultPageNew() {
   const fetchResult = async () => {
     try {
       const response = await axios.get(`${API_BASE_URL}/api/v1/tagging/${fileId}/result`)
+      console.log('ResultPageNew - API response:', response.data)
       setData(response.data)
 
       // 통계 계산
@@ -26,7 +27,14 @@ export default function ResultPageNew() {
       setLoading(false)
     } catch (error) {
       console.error('결과 조회 실패:', error)
-      setLoading(false)
+
+      // 404 에러면 태깅이 완료되지 않은 것이므로 태깅 페이지로 리다이렉트
+      if (error.response?.status === 404) {
+        console.log('태깅이 완료되지 않았습니다. 태깅 페이지로 이동합니다.')
+        navigate(`/tagging/${fileId}`)
+      } else {
+        setLoading(false)
+      }
     }
   }
 
@@ -34,18 +42,21 @@ export default function ResultPageNew() {
     const speakerStats = {}
 
     resultData.final_transcript.forEach((segment) => {
-      const speaker = segment.speaker_name
+      // speaker_label을 키로 사용 (서로 다른 화자 구분)
+      const speakerKey = segment.speaker_label
       const duration = segment.end_time - segment.start_time
 
-      if (!speakerStats[speaker]) {
-        speakerStats[speaker] = {
+      if (!speakerStats[speakerKey]) {
+        speakerStats[speakerKey] = {
+          name: segment.speaker_name,  // 표시용 이름
+          label: segment.speaker_label,  // 구분용 라벨
           count: 0,
           totalDuration: 0
         }
       }
 
-      speakerStats[speaker].count += 1
-      speakerStats[speaker].totalDuration += duration
+      speakerStats[speakerKey].count += 1
+      speakerStats[speakerKey].totalDuration += duration
     })
 
     setStats(speakerStats)
@@ -81,39 +92,48 @@ export default function ResultPageNew() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-950 dark:to-purple-950 transition-colors duration-300 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-indigo-600"></div>
+      <div className="p-8 flex items-center justify-center min-h-[calc(100vh-4rem)]">
+        <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-accent-blue"></div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-950 dark:to-purple-950 transition-colors duration-300 py-8 px-4">
+    <div className="p-8">
       <div className="max-w-7xl mx-auto">
         {/* 헤더 */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-20 h-20 bg-green-500 rounded-full mb-4">
-            <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
+        <div className="mb-8 flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+              회의록 결과
+            </h1>
+            <p className="text-gray-600 dark:text-gray-400">
+              화자별 발화 통계와 전체 회의록을 확인하세요
+            </p>
           </div>
-          <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-3">
-            회의록 완성! 🎉
-          </h1>
-          <p className="text-gray-600 dark:text-gray-300 text-lg">
-            화자 태깅이 완료되었습니다. 다음 단계를 선택하세요.
-          </p>
+          <button
+            onClick={() => navigate(`/tagging/${fileId}`)}
+            className="flex items-center gap-2 px-4 py-2 bg-accent-sage dark:bg-accent-teal hover:opacity-90 text-gray-900 dark:text-white rounded-lg font-medium transition-all"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+            수정하기
+          </button>
         </div>
 
         {/* 통계 카드 */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          {stats && Object.entries(stats).map(([speaker, stat]) => (
-            <div key={speaker} className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border-2 border-gray-200 dark:border-gray-700">
+          {stats && Object.entries(stats).map(([speakerLabel, stat], index) => (
+            <div key={speakerLabel} className="bg-bg-tertiary dark:bg-bg-tertiary-dark rounded-xl shadow-lg p-6 border-2 border-bg-accent/30">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-bold text-gray-900 dark:text-white">{speaker}</h3>
-                <div className="w-10 h-10 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full flex items-center justify-center">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900 dark:text-white">{stat.name}</h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{stat.label}</p>
+                </div>
+                <div className="w-10 h-10 bg-accent-blue rounded-full flex items-center justify-center">
                   <span className="text-white font-bold text-sm">
-                    {Object.keys(stats).indexOf(speaker) + 1}
+                    {index + 1}
                   </span>
                 </div>
               </div>
@@ -121,11 +141,11 @@ export default function ResultPageNew() {
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-gray-600 dark:text-gray-300">🗣️ 발화 횟수</span>
-                  <span className="text-2xl font-bold text-indigo-600">{stat.count}회</span>
+                  <span className="text-2xl font-bold text-accent-blue">{stat.count}회</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-gray-600 dark:text-gray-300">⏱️ 발화 시간</span>
-                  <span className="text-lg font-semibold text-purple-600">
+                  <span className="text-lg font-semibold text-gray-900 dark:text-white">
                     {formatDuration(stat.totalDuration)}
                   </span>
                 </div>
@@ -135,12 +155,12 @@ export default function ResultPageNew() {
         </div>
 
         {/* 전체 회의록 */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 mb-8">
+        <div className="bg-bg-tertiary dark:bg-bg-tertiary-dark rounded-xl shadow-lg p-6 mb-8">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white">📝 전체 회의록</h2>
             <button
               onClick={handleDownload}
-              className="flex items-center gap-2 px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium transition-colors"
+              className="flex items-center gap-2 px-4 py-2 bg-bg-secondary dark:bg-bg-secondary-dark hover:bg-bg-accent/20 text-gray-700 dark:text-gray-200 rounded-lg font-medium transition-colors"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -153,10 +173,10 @@ export default function ResultPageNew() {
             {data?.final_transcript.map((segment, index) => (
               <div
                 key={index}
-                className="p-4 bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 rounded-lg transition-colors"
+                className="p-4 bg-bg-secondary dark:bg-bg-secondary-dark hover:bg-bg-accent/20 rounded-lg transition-colors"
               >
                 <div className="flex items-center justify-between mb-2">
-                  <span className="font-bold text-indigo-700 dark:text-indigo-300">{segment.speaker_name}</span>
+                  <span className="font-bold text-accent-blue dark:text-blue-300">{segment.speaker_name}</span>
                   <span className="text-xs text-gray-500 dark:text-gray-400">
                     {formatTime(segment.start_time)} - {formatTime(segment.end_time)}
                   </span>
@@ -167,63 +187,47 @@ export default function ResultPageNew() {
           </div>
         </div>
 
-        {/* 다음 단계 선택 */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8">
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6 text-center">
-            🚀 다음 단계를 선택하세요
+        {/* 추가 기능 */}
+        <div className="bg-bg-tertiary dark:bg-bg-tertiary-dark rounded-xl p-6 border border-bg-accent/30">
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
+            추가 기능
           </h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* 요약 생성 */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+            {/* RAG */}
             <button
-              onClick={() => navigate(`/summary/${fileId}`)}
-              className="group p-6 bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/30 hover:from-blue-100 hover:to-blue-200 dark:hover:from-blue-900/50 dark:hover:to-blue-800/50 rounded-xl border-2 border-blue-200 dark:border-blue-700 hover:border-blue-400 dark:hover:border-blue-500 transition-all transform hover:scale-105 shadow-md hover:shadow-xl"
+              onClick={() => navigate(`/rag/${data?.audio_file_id || fileId}`, { state: { resultFileId: fileId } })}
+              className="flex items-center gap-3 p-4 bg-accent-sage dark:bg-accent-teal hover:opacity-90 text-gray-900 dark:text-white rounded-lg font-medium transition-all"
             >
-              <div className="text-5xl mb-4 group-hover:scale-110 transition-transform">✨</div>
-              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">요약 생성</h3>
-              <p className="text-gray-600 dark:text-gray-300 text-sm">
-                AI가 회의 내용을 핵심 포인트로 요약해드립니다
-              </p>
+              <span className="text-2xl">💬</span>
+              <span>RAG</span>
             </button>
 
-            {/* RAG 대화 */}
+            {/* 효율성 평가 */}
             <button
-              onClick={() => navigate(`/rag/${fileId}`)}
-              className="group p-6 bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/30 dark:to-purple-800/30 hover:from-purple-100 hover:to-purple-200 dark:hover:from-purple-900/50 dark:hover:to-purple-800/50 rounded-xl border-2 border-purple-200 dark:border-purple-700 hover:border-purple-400 dark:hover:border-purple-500 transition-all transform hover:scale-105 shadow-md hover:shadow-xl"
+              onClick={() => navigate(`/efficiency/${fileId}`)}
+              className="flex items-center gap-3 p-4 bg-accent-sage dark:bg-accent-teal hover:opacity-90 text-gray-900 dark:text-white rounded-lg font-medium transition-all"
             >
-              <div className="text-5xl mb-4 group-hover:scale-110 transition-transform">💬</div>
-              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">RAG 대화</h3>
-              <p className="text-gray-600 dark:text-gray-300 text-sm">
-                회의 내용에 대해 질문하고 답변을 받아보세요
-              </p>
+              <span className="text-2xl">📊</span>
+              <span>효율성 평가</span>
             </button>
 
-            {/* 자막 생성 */}
+            {/* TODO */}
             <button
-              onClick={() => navigate(`/subtitle/${fileId}`)}
-              className="group p-6 bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/30 dark:to-green-800/30 hover:from-green-100 hover:to-green-200 dark:hover:from-green-900/50 dark:hover:to-green-800/50 rounded-xl border-2 border-green-200 dark:border-green-700 hover:border-green-400 dark:hover:border-green-500 transition-all transform hover:scale-105 shadow-md hover:shadow-xl"
+              onClick={() => navigate(`/todo/${fileId}`)}
+              className="flex items-center gap-3 p-4 bg-accent-sage dark:bg-accent-teal hover:opacity-90 text-gray-900 dark:text-white rounded-lg font-medium transition-all"
             >
-              <div className="text-5xl mb-4 group-hover:scale-110 transition-transform">🎬</div>
-              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">자막 생성</h3>
-              <p className="text-gray-600 dark:text-gray-300 text-sm">
-                SRT/VTT 형식의 자막 파일을 생성합니다
-              </p>
+              <span className="text-2xl">✅</span>
+              <span>TODO</span>
             </button>
-          </div>
 
-          {/* 추가 옵션 */}
-          <div className="mt-8 pt-6 border-t border-gray-200 dark:border-gray-700 flex justify-center gap-4">
+            {/* 템플릿 */}
             <button
-              onClick={() => navigate('/')}
-              className="px-6 py-3 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-semibold transition-colors"
+              onClick={() => navigate(`/template/${fileId}`)}
+              className="flex items-center gap-3 p-4 bg-accent-sage dark:bg-accent-teal hover:opacity-90 text-gray-900 dark:text-white rounded-lg font-medium transition-all"
             >
-              🏠 처음으로
-            </button>
-            <button
-              onClick={() => navigate(`/tagging/${fileId}`)}
-              className="px-6 py-3 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 dark:text-indigo-300 rounded-lg font-semibold transition-colors"
-            >
-              ✏️ 태깅 수정
+              <span className="text-2xl">📋</span>
+              <span>템플릿</span>
             </button>
           </div>
         </div>

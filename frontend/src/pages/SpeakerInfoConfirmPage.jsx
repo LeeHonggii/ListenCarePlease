@@ -148,9 +148,9 @@ export default function SpeakerInfoConfirmPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-950 dark:to-purple-950 transition-colors duration-300 flex items-center justify-center">
+      <div className="p-8 flex items-center justify-center min-h-[calc(100vh-4rem)]">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-indigo-600 mx-auto"></div>
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-accent-blue mx-auto"></div>
           <p className="mt-4 text-gray-600 dark:text-gray-300">화자 정보를 불러오는 중...</p>
         </div>
       </div>
@@ -159,13 +159,13 @@ export default function SpeakerInfoConfirmPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-950 dark:to-purple-950 transition-colors duration-300 flex items-center justify-center">
+      <div className="p-8 flex items-center justify-center min-h-[calc(100vh-4rem)]">
         <div className="text-center">
-          <div className="text-red-600 text-6xl mb-4">⚠️</div>
+          <div className="text-red-600 dark:text-red-400 text-6xl mb-4">⚠️</div>
           <p className="text-xl text-gray-700 dark:text-gray-300 mb-4">{error}</p>
           <button
             onClick={() => navigate(`/processing/${fileId}`)}
-            className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition-colors"
+            className="px-6 py-3 bg-accent-blue text-white rounded-xl font-semibold hover:bg-blue-600 transition-colors"
           >
             처리 페이지로 돌아가기
           </button>
@@ -175,7 +175,7 @@ export default function SpeakerInfoConfirmPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-950 dark:to-purple-950 transition-colors duration-300 py-12 px-4">
+    <div className="p-8">
       <div className="max-w-3xl mx-auto">
         {/* 헤더 */}
         <div className="text-center mb-8">
@@ -188,7 +188,7 @@ export default function SpeakerInfoConfirmPage() {
         </div>
 
         {/* 메인 카드 */}
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 mb-6">
+        <div className="bg-bg-tertiary dark:bg-bg-tertiary-dark rounded-2xl shadow-xl p-8 mb-6 border border-bg-accent/30">
           {/* 화자 수 섹션 */}
           <div className="mb-8 pb-8 border-b border-gray-200 dark:border-gray-700">
             <div className="flex items-center justify-between mb-4">
@@ -198,7 +198,7 @@ export default function SpeakerInfoConfirmPage() {
               {!isEditing && (
                 <button
                   onClick={() => setIsEditing(true)}
-                  className="text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+                  className="text-sm text-accent-blue hover:text-blue-600 font-medium"
                 >
                   수정하기
                 </button>
@@ -214,12 +214,12 @@ export default function SpeakerInfoConfirmPage() {
                     max="20"
                     value={speakerCount}
                     onChange={(e) => setSpeakerCount(parseInt(e.target.value) || 1)}
-                    className="w-20 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                    className="w-20 px-3 py-2 border border-bg-accent/30 bg-bg-secondary dark:bg-bg-secondary-dark rounded-lg focus:ring-2 focus:ring-accent-blue focus:border-transparent text-gray-900 dark:text-white"
                   />
                   <span className="text-gray-700 dark:text-gray-300">명</span>
                 </div>
               ) : (
-                <div className="text-4xl font-bold text-indigo-600">
+                <div className="text-4xl font-bold text-accent-blue">
                   {speakerCount}명
                 </div>
               )}
@@ -239,7 +239,7 @@ export default function SpeakerInfoConfirmPage() {
               {isEditing && (
                 <button
                   onClick={handleAddName}
-                  className="text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+                  className="text-sm text-accent-blue hover:text-blue-600 font-medium"
                 >
                   + 이름 추가
                 </button>
@@ -254,7 +254,7 @@ export default function SpeakerInfoConfirmPage() {
                   {isEditing && (
                     <button
                       onClick={handleAddName}
-                      className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                      className="mt-4 px-4 py-2 bg-accent-blue text-white rounded-lg hover:bg-blue-600"
                     >
                       이름 추가하기
                     </button>
@@ -269,14 +269,14 @@ export default function SpeakerInfoConfirmPage() {
                           type="checkbox"
                           checked={selectedNames.includes(name)}
                           onChange={() => handleNameToggle(name)}
-                          className="w-5 h-5 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                          className="w-5 h-5 text-accent-blue border-gray-300 rounded focus:ring-accent-blue"
                         />
                         <input
                           type="text"
                           value={name}
                           onChange={(e) => handleNameChange(index, e.target.value)}
                           placeholder="이름 입력"
-                          className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                          className="flex-1 px-4 py-2 border border-bg-accent/30 bg-bg-secondary dark:bg-bg-secondary-dark rounded-lg focus:ring-2 focus:ring-accent-blue focus:border-transparent text-gray-900 dark:text-white"
                         />
                         <button
                           onClick={() => handleRemoveName(index)}
@@ -291,9 +291,9 @@ export default function SpeakerInfoConfirmPage() {
                           type="checkbox"
                           checked={selectedNames.includes(name)}
                           onChange={() => handleNameToggle(name)}
-                          className="w-5 h-5 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                          className="w-5 h-5 text-accent-blue border-gray-300 rounded focus:ring-accent-blue"
                         />
-                        <div className="flex-1 px-4 py-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded-lg font-medium">
+                        <div className="flex-1 px-4 py-2 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-lg font-medium">
                           {name}
                         </div>
                       </>
@@ -317,7 +317,7 @@ export default function SpeakerInfoConfirmPage() {
               {isEditing && (
                 <button
                   onClick={handleAddNickname}
-                  className="text-sm text-purple-600 hover:text-purple-700 font-medium"
+                  className="text-sm text-accent-blue hover:text-blue-600 font-medium"
                 >
                   + 닉네임 추가
                 </button>
@@ -332,7 +332,7 @@ export default function SpeakerInfoConfirmPage() {
                   {isEditing && (
                     <button
                       onClick={handleAddNickname}
-                      className="mt-4 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+                      className="mt-4 px-4 py-2 bg-accent-blue text-white rounded-lg hover:bg-blue-600"
                     >
                       닉네임 추가하기
                     </button>
@@ -347,14 +347,14 @@ export default function SpeakerInfoConfirmPage() {
                           type="checkbox"
                           checked={selectedNicknames.includes(nickname)}
                           onChange={() => handleNicknameToggle(nickname)}
-                          className="w-5 h-5 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                          className="w-5 h-5 text-accent-blue border-gray-300 rounded focus:ring-accent-blue"
                         />
                         <input
                           type="text"
                           value={nickname}
                           onChange={(e) => handleNicknameChange(index, e.target.value)}
                           placeholder="닉네임 입력"
-                          className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                          className="flex-1 px-4 py-2 border border-bg-accent/30 bg-bg-secondary dark:bg-bg-secondary-dark rounded-lg focus:ring-2 focus:ring-accent-blue focus:border-transparent text-gray-900 dark:text-white"
                         />
                         <button
                           onClick={() => handleRemoveNickname(index)}
@@ -369,9 +369,9 @@ export default function SpeakerInfoConfirmPage() {
                           type="checkbox"
                           checked={selectedNicknames.includes(nickname)}
                           onChange={() => handleNicknameToggle(nickname)}
-                          className="w-5 h-5 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                          className="w-5 h-5 text-accent-blue border-gray-300 rounded focus:ring-accent-blue"
                         />
-                        <div className="flex-1 px-4 py-2 bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-lg font-medium">
+                        <div className="flex-1 px-4 py-2 bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 rounded-lg font-medium">
                           {nickname}
                         </div>
                       </>
@@ -401,7 +401,7 @@ export default function SpeakerInfoConfirmPage() {
                   setSelectedNicknames([...speakerInfo.detected_nicknames || []])
                   setIsEditing(false)
                 }}
-                className="flex-1 px-6 py-3 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-semibold hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+                className="flex-1 px-6 py-3 bg-bg-secondary dark:bg-bg-secondary-dark text-gray-700 dark:text-gray-300 rounded-xl font-semibold hover:bg-bg-accent/20 transition-colors"
               >
                 취소
               </button>
@@ -410,7 +410,7 @@ export default function SpeakerInfoConfirmPage() {
                   // 수정 완료
                   setIsEditing(false)
                 }}
-                className="flex-1 px-6 py-3 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200"
+                className="flex-1 px-6 py-3 bg-accent-blue text-white rounded-xl font-semibold hover:bg-blue-600 transition-colors shadow-lg"
               >
                 저장
               </button>
@@ -418,7 +418,7 @@ export default function SpeakerInfoConfirmPage() {
           ) : (
             <button
               onClick={handleConfirm}
-              className="w-full px-6 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-semibold hover:from-indigo-700 hover:to-purple-700 transition-all shadow-lg shadow-indigo-200 text-lg"
+              className="w-full px-6 py-4 bg-accent-blue text-white rounded-xl font-semibold hover:bg-blue-600 transition-all shadow-lg text-lg"
             >
               확인 완료 → 화자 태깅하기
             </button>
@@ -436,7 +436,7 @@ export default function SpeakerInfoConfirmPage() {
         <div className="mt-6 text-center">
           <button
             onClick={() => navigate('/')}
-            className="px-6 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg font-medium transition"
+            className="px-6 py-2 bg-bg-secondary dark:bg-bg-secondary-dark hover:bg-bg-accent/20 text-gray-700 dark:text-gray-200 rounded-lg font-medium transition"
           >
             홈으로 가기
           </button>

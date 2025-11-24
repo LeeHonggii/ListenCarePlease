@@ -61,7 +61,7 @@ export default function StatsCards({ stats, period, onPeriodChange }) {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
         </svg>
       ),
-      bgColor: 'bg-purple-500',
+      bgColor: 'bg-gray-500',
       change: comparison.duration_diff > 0 ? `+${formatDuration(comparison.duration_diff)}` : null,
       unit: ''
     }
@@ -78,7 +78,7 @@ export default function StatsCards({ stats, period, onPeriodChange }) {
               onClick={() => onPeriodChange(p)}
               className={`px-4 py-2 text-sm font-medium border ${
                 period === p
-                  ? 'bg-indigo-600 text-white border-indigo-600'
+                  ? 'bg-accent-blue text-white border-accent-blue'
                   : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'
               } ${
                 p === 'day' ? 'rounded-l-lg' : p === 'month' ? 'rounded-r-lg' : ''

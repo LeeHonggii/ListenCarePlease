@@ -3,42 +3,43 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 import { AuthProvider } from './contexts/AuthContext'
 import { ThemeProvider } from './contexts/ThemeContext'
 import ProtectedRoute from './components/ProtectedRoute'
-import ThemeToggle from './components/ThemeToggle'
+import MainLayout from './components/Layout/MainLayout'
 import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
 import OAuthCallbackPage from './pages/OAuthCallbackPage'
-import DashboardPage from './pages/DashboardPage'
+import DashboardPageNew from './pages/DashboardPageNew'
 import UploadPage from './pages/UploadPage'
 import ProcessingPage from './pages/ProcessingPage'
 import SpeakerInfoConfirmPage from './pages/SpeakerInfoConfirmPage'
 import TaggingAnalyzingPage from './pages/TaggingAnalyzingPage'
 import TaggingPageNew from './pages/TaggingPageNew'
 import ResultPageNew from './pages/ResultPageNew'
+import RagPage from './pages/RagPage'
 import TestLatestPage from './pages/TestLatestPage'
 
 function App() {
   return (
     <ThemeProvider>
-      <Router future={{ 
+      <Router future={{
         v7_relativeSplatPath: true,
-        v7_startTransition: true 
+        v7_startTransition: true
       }}>
         <AuthProvider>
-          <ThemeToggle />
-          <div className="min-h-screen">
-            <Routes>
+          <Routes>
             {/* 공개 라우트 */}
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
             <Route path="/test-latest" element={<TestLatestPage />} />
 
-            {/* 보호된 라우트 */}
+            {/* 보호된 라우트 - MainLayout 적용 */}
             <Route
               path="/"
               element={
                 <ProtectedRoute>
-                  <DashboardPage />
+                  <MainLayout>
+                    <DashboardPageNew />
+                  </MainLayout>
                 </ProtectedRoute>
               }
             />
@@ -46,7 +47,9 @@ function App() {
               path="/upload"
               element={
                 <ProtectedRoute>
-                  <UploadPage />
+                  <MainLayout>
+                    <UploadPage />
+                  </MainLayout>
                 </ProtectedRoute>
               }
             />
@@ -54,7 +57,9 @@ function App() {
               path="/processing/:fileId"
               element={
                 <ProtectedRoute>
-                  <ProcessingPage />
+                  <MainLayout>
+                    <ProcessingPage />
+                  </MainLayout>
                 </ProtectedRoute>
               }
             />
@@ -62,7 +67,9 @@ function App() {
               path="/confirm/:fileId"
               element={
                 <ProtectedRoute>
-                  <SpeakerInfoConfirmPage />
+                  <MainLayout>
+                    <SpeakerInfoConfirmPage />
+                  </MainLayout>
                 </ProtectedRoute>
               }
             />
@@ -70,7 +77,9 @@ function App() {
               path="/analyzing/:fileId"
               element={
                 <ProtectedRoute>
-                  <TaggingAnalyzingPage />
+                  <MainLayout>
+                    <TaggingAnalyzingPage />
+                  </MainLayout>
                 </ProtectedRoute>
               }
             />
@@ -78,7 +87,9 @@ function App() {
               path="/tagging/:fileId"
               element={
                 <ProtectedRoute>
-                  <TaggingPageNew />
+                  <MainLayout>
+                    <TaggingPageNew />
+                  </MainLayout>
                 </ProtectedRoute>
               }
             />
@@ -86,14 +97,25 @@ function App() {
               path="/result/:fileId"
               element={
                 <ProtectedRoute>
-                  <ResultPageNew />
+                  <MainLayout>
+                    <ResultPageNew />
+                  </MainLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/rag/:fileId"
+              element={
+                <ProtectedRoute>
+                  <MainLayout>
+                    <RagPage />
+                  </MainLayout>
                 </ProtectedRoute>
               }
             />
           </Routes>
-        </div>
-      </AuthProvider>
-    </Router>
+        </AuthProvider>
+      </Router>
     </ThemeProvider>
   )
 }

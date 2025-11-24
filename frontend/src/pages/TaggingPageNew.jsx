@@ -80,8 +80,8 @@ export default function TaggingPageNew() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-950 dark:to-purple-950 transition-colors duration-300 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-indigo-600"></div>
+      <div className="p-8 flex items-center justify-center min-h-[calc(100vh-4rem)]">
+        <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-accent-blue"></div>
       </div>
     )
   }
@@ -89,7 +89,7 @@ export default function TaggingPageNew() {
   const allNamesFilled = Object.values(speakerNames).every(name => name.trim() !== '')
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-950 dark:to-purple-950 transition-colors duration-300 py-8 px-4">
+    <div className="p-8">
       <div className="max-w-7xl mx-auto">
         {/* 헤더 */}
         <div className="text-center mb-6">
@@ -103,8 +103,8 @@ export default function TaggingPageNew() {
             onClick={() => setView('summary')}
             className={`px-6 py-2 rounded-lg font-semibold transition-all ${
               view === 'summary'
-                ? 'bg-indigo-600 text-white shadow-lg'
-                : 'bg-white text-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600'
+                ? 'bg-accent-blue text-white shadow-lg'
+                : 'bg-bg-tertiary dark:bg-bg-tertiary-dark text-gray-700 dark:text-gray-300 hover:bg-bg-accent/20'
             }`}
           >
             📊 요약 뷰 (일괄 매핑)
@@ -113,8 +113,8 @@ export default function TaggingPageNew() {
             onClick={() => setView('detail')}
             className={`px-6 py-2 rounded-lg font-semibold transition-all ${
               view === 'detail'
-                ? 'bg-indigo-600 text-white shadow-lg'
-                : 'bg-white text-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600'
+                ? 'bg-accent-blue text-white shadow-lg'
+                : 'bg-bg-tertiary dark:bg-bg-tertiary-dark text-gray-700 dark:text-gray-300 hover:bg-bg-accent/20'
             }`}
           >
             📝 상세 뷰 (개별 수정)
@@ -127,17 +127,17 @@ export default function TaggingPageNew() {
             <div className="space-y-4">
               <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">🎤 화자 목록</h2>
               {taggingData?.suggested_mappings.map((mapping) => (
-                <div key={mapping.speaker_label} className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+                <div key={mapping.speaker_label} className="bg-bg-tertiary dark:bg-bg-tertiary-dark rounded-xl shadow-lg p-6 border border-bg-accent/30">
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="text-lg font-bold text-gray-900 dark:text-white">{mapping.speaker_label}</h3>
                     <div className="flex gap-2">
                       {mapping.nickname && (
-                        <span className="text-xs bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-200 px-3 py-1 rounded-full">
+                        <span className="text-xs bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-200 px-3 py-1 rounded-full">
                           {mapping.nickname}
                         </span>
                       )}
                       {mapping.suggested_name && (
-                        <span className="text-xs bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-200 px-3 py-1 rounded-full">
+                        <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-200 px-3 py-1 rounded-full">
                           제안: {mapping.suggested_name}
                         </span>
                       )}
@@ -149,7 +149,7 @@ export default function TaggingPageNew() {
                     value={speakerNames[mapping.speaker_label] || ''}
                     onChange={(e) => handleBulkNameChange(mapping.speaker_label, e.target.value)}
                     placeholder="이름을 입력하세요"
-                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    className="w-full px-4 py-2 border border-bg-accent/30 bg-bg-secondary dark:bg-bg-secondary-dark text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-accent-blue focus:border-transparent"
                   />
 
                   {/* 빠른 선택 - 이름 */}
@@ -161,7 +161,7 @@ export default function TaggingPageNew() {
                           <button
                             key={idx}
                             onClick={() => handleBulkNameChange(mapping.speaker_label, name)}
-                            className="px-3 py-1 bg-indigo-100 dark:bg-indigo-900 hover:bg-indigo-200 dark:hover:bg-indigo-800 text-indigo-700 dark:text-indigo-200 rounded-full text-sm transition-colors"
+                            className="px-3 py-1 bg-blue-100 dark:bg-blue-900 hover:bg-blue-200 dark:hover:bg-blue-800 text-blue-700 dark:text-blue-200 rounded-full text-sm transition-colors"
                           >
                             {name}
                           </button>
@@ -179,7 +179,7 @@ export default function TaggingPageNew() {
                           <button
                             key={idx}
                             onClick={() => handleBulkNameChange(mapping.speaker_label, nickname)}
-                            className="px-3 py-1 bg-purple-100 dark:bg-purple-900 hover:bg-purple-200 dark:hover:bg-purple-800 text-purple-700 dark:text-purple-200 rounded-full text-sm transition-colors"
+                            className="px-3 py-1 bg-orange-100 dark:bg-orange-900 hover:bg-orange-200 dark:hover:bg-orange-800 text-orange-700 dark:text-orange-200 rounded-full text-sm transition-colors"
                           >
                             {nickname}
                           </button>
@@ -194,12 +194,12 @@ export default function TaggingPageNew() {
             {/* 미리보기 */}
             <div>
               <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">👀 미리보기</h2>
-              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 max-h-[600px] overflow-y-auto space-y-3">
+              <div className="bg-bg-tertiary dark:bg-bg-tertiary-dark rounded-xl shadow-lg p-6 max-h-[600px] overflow-y-auto space-y-3">
                 {transcript.map((seg, idx) => {
                   const displayName = speakerNames[seg.speaker_label] || seg.speaker_label
                   return (
-                    <div key={idx} className="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                      <div className="font-semibold text-indigo-700 dark:text-indigo-300 mb-1">{displayName}</div>
+                    <div key={idx} className="p-3 bg-bg-secondary dark:bg-bg-secondary-dark rounded-lg">
+                      <div className="font-semibold text-accent-blue dark:text-blue-300 mb-1">{displayName}</div>
                       <div className="text-gray-700 dark:text-gray-200 text-sm">{seg.text}</div>
                     </div>
                   )
@@ -209,7 +209,7 @@ export default function TaggingPageNew() {
           </div>
         ) : (
           // 상세 뷰: 전체 대본에서 개별 수정
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+          <div className="bg-bg-tertiary dark:bg-bg-tertiary-dark rounded-xl shadow-lg p-6">
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
               📝 전체 대본 (개별 발화 수정 가능)
             </h2>
@@ -219,7 +219,7 @@ export default function TaggingPageNew() {
 
             <div className="space-y-3 max-h-[700px] overflow-y-auto">
               {transcript.map((seg, idx) => (
-                <div key={idx} className="flex items-start gap-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors">
+                <div key={idx} className="flex items-start gap-4 p-4 bg-bg-secondary dark:bg-bg-secondary-dark rounded-lg hover:bg-bg-accent/20 transition-colors">
                   <div className="flex-shrink-0 text-xs text-gray-500 dark:text-gray-400 mt-1">
                     {Math.floor(seg.start_time)}초
                   </div>
@@ -227,7 +227,7 @@ export default function TaggingPageNew() {
                   <select
                     value={seg.speaker_label}
                     onChange={(e) => handleSegmentSpeakerChange(idx, e.target.value)}
-                    className="flex-shrink-0 px-3 py-1 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded-lg text-sm font-medium focus:ring-2 focus:ring-indigo-500"
+                    className="flex-shrink-0 px-3 py-1 border border-bg-accent/30 bg-bg-tertiary dark:bg-bg-tertiary-dark text-gray-900 dark:text-white rounded-lg text-sm font-medium focus:ring-2 focus:ring-accent-blue"
                   >
                     {taggingData?.suggested_mappings.map((m) => (
                       <option key={m.speaker_label} value={m.speaker_label}>
@@ -250,8 +250,8 @@ export default function TaggingPageNew() {
             disabled={!allNamesFilled}
             className={`w-full px-6 py-4 rounded-xl font-semibold text-lg transition-all ${
               allNamesFilled
-                ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:from-indigo-700 hover:to-purple-700 shadow-lg'
-                : 'bg-gray-300 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                ? 'bg-accent-blue text-white hover:bg-blue-600 shadow-lg'
+                : 'bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed'
             }`}
           >
             {allNamesFilled ? '✅ 태깅 완료 → 결과 보기' : '⚠️ 모든 화자의 이름을 입력해주세요'}
@@ -261,7 +261,7 @@ export default function TaggingPageNew() {
           <div className="text-center">
             <button
               onClick={() => navigate('/')}
-              className="px-6 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg font-medium transition"
+              className="px-6 py-2 bg-bg-secondary dark:bg-bg-secondary-dark hover:bg-bg-accent/20 text-gray-700 dark:text-gray-200 rounded-lg font-medium transition"
             >
               홈으로 가기
             </button>
