@@ -214,7 +214,7 @@ export default function ResultPageNew() {
 
             {/* TODO */}
             <button
-              onClick={() => navigate(`/todo/${fileId}`)}
+              onClick={() => navigate(`/todo/${data?.audio_file_id || fileId}`)}
               className="flex items-center gap-3 p-4 bg-accent-sage dark:bg-accent-teal hover:opacity-90 text-gray-900 dark:text-white rounded-lg font-medium transition-all"
             >
               <span className="text-2xl">✅</span>

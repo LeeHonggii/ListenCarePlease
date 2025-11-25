@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
-import { getRecentFiles, getProcessingFilesFromDashboard } from '../../services/api'
+import { getRecentFiles, getProcessingFilesFromDashboard, deleteAudioFile } from '../../services/api'
 
 export default function Sidebar() {
   const navigate = useNavigate()
@@ -50,6 +50,29 @@ export default function Sidebar() {
     navigate('/upload')
   }
 
+  const handleDeleteFile = async (e, fileId, filename) => {
+    e.stopPropagation() // 파일 클릭 이벤트 방지
+
+    if (!confirm(`"${filename}" 파일을 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`)) {
+      return
+    }
+
+    try {
+      await deleteAudioFile(fileId)
+      alert('파일이 삭제되었습니다.')
+      loadFiles() // 목록 새로고침
+
+      // 삭제된 파일 페이지에 있다면 대시보드로 이동
+      if (location.pathname.includes(`/result/${fileId}`) ||
+          location.pathname.includes(`/processing/${fileId}`)) {
+        navigate('/')
+      }
+    } catch (error) {
+      console.error('파일 삭제 실패:', error)
+      alert('파일 삭제에 실패했습니다.')
+    }
+  }
+
   return (
     <div className="w-64 h-screen bg-bg-secondary dark:bg-bg-secondary-dark border-r border-bg-accent/30 flex flex-col">
       {/* 로고 */}
@@ -80,23 +103,36 @@ export default function Sidebar() {
               처리 중
             </h3>
             {processingFiles.map((file) => (
-              <button
+              <div
                 key={file.id}
-                onClick={() => handleFileClick(file)}
-                className="w-full text-left p-3 mb-2 rounded-lg hover:bg-bg-tertiary dark:hover:bg-bg-tertiary-dark transition-colors"
+                className="relative group mb-2"
               >
-                <div className="flex items-start gap-2">
-                  <span className="text-accent-orange mt-0.5">◉</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                      {file.original_filename}
-                    </p>
-                    <p className="text-xs text-accent-orange">
-                      진행 중 {file.progress || 0}%
-                    </p>
+                <button
+                  onClick={() => handleFileClick(file)}
+                  className="w-full text-left p-3 rounded-lg hover:bg-bg-tertiary dark:hover:bg-bg-tertiary-dark transition-colors"
+                >
+                  <div className="flex items-start gap-2">
+                    <span className="text-accent-orange mt-0.5">◉</span>
+                    <div className="flex-1 min-w-0 pr-6">
+                      <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                        {file.original_filename}
+                      </p>
+                      <p className="text-xs text-accent-orange">
+                        진행 중 {file.progress || 0}%
+                      </p>
+                    </div>
                   </div>
-                </div>
-              </button>
+                </button>
+                <button
+                  onClick={(e) => handleDeleteFile(e, file.id, file.original_filename)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 p-1.5 hover:bg-red-100 dark:hover:bg-red-900/30 rounded transition-all"
+                  title="삭제"
+                >
+                  <svg className="w-4 h-4 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </button>
+              </div>
             ))}
           </div>
         )}
@@ -116,32 +152,45 @@ export default function Sidebar() {
             </div>
           ) : (
             recentFiles.map((file) => (
-              <button
+              <div
                 key={file.id}
-                onClick={() => handleFileClick(file)}
-                className={`w-full text-left p-3 mb-2 rounded-lg transition-colors ${
-                  location.pathname.includes(`/result/${file.id}`)
-                    ? 'bg-bg-tertiary dark:bg-bg-tertiary-dark'
-                    : 'hover:bg-bg-tertiary dark:hover:bg-bg-tertiary-dark'
-                }`}
+                className="relative group mb-2"
               >
-                <div className="flex items-start gap-2">
-                  <span className="text-accent-green mt-0.5">✓</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                      {file.original_filename}
-                    </p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                      {new Date(file.created_at).toLocaleDateString('ko-KR', {
-                        month: 'short',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })}
-                    </p>
+                <button
+                  onClick={() => handleFileClick(file)}
+                  className={`w-full text-left p-3 rounded-lg transition-colors ${
+                    location.pathname.includes(`/result/${file.id}`)
+                      ? 'bg-bg-tertiary dark:bg-bg-tertiary-dark'
+                      : 'hover:bg-bg-tertiary dark:hover:bg-bg-tertiary-dark'
+                  }`}
+                >
+                  <div className="flex items-start gap-2">
+                    <span className="text-accent-green mt-0.5">✓</span>
+                    <div className="flex-1 min-w-0 pr-6">
+                      <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                        {file.original_filename}
+                      </p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        {new Date(file.created_at).toLocaleDateString('ko-KR', {
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              </button>
+                </button>
+                <button
+                  onClick={(e) => handleDeleteFile(e, file.id, file.original_filename)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 p-1.5 hover:bg-red-100 dark:hover:bg-red-900/30 rounded transition-all"
+                  title="삭제"
+                >
+                  <svg className="w-4 h-4 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </button>
+              </div>
             ))
           )}
         </div>

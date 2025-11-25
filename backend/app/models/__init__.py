@@ -5,6 +5,7 @@ from app.models.stt import STTResult
 from app.models.diarization import DiarizationResult
 from app.models.tagging import DetectedName, SpeakerMapping
 from app.models.transcript import FinalTranscript, Summary, SummaryType
+from app.models.todo import TodoItem, TodoPriority
 
 __all__ = [
     "User",
@@ -19,4 +20,6 @@ __all__ = [
     "FinalTranscript",
     "Summary",
     "SummaryType",
+    "TodoItem",
+    "TodoPriority",
 ]

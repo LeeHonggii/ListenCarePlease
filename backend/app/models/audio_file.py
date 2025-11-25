@@ -55,6 +55,7 @@ class AudioFile(Base):
     user_confirmation = relationship("UserConfirmation", back_populates="audio_file", uselist=False, cascade="all, delete-orphan")
     final_transcripts = relationship("FinalTranscript", back_populates="audio_file", cascade="all, delete-orphan")
     summaries = relationship("Summary", back_populates="audio_file", cascade="all, delete-orphan")
+    todos = relationship("TodoItem", back_populates="audio_file", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<AudioFile(id={self.id}, filename={self.original_filename}, status={self.status})>"

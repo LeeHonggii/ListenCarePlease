@@ -24,7 +24,7 @@ async def startup_event():
     """앱 시작 시 실행되는 이벤트"""
     import os
     from app.db.base import Base, engine
-    from app.models import user, audio_file, preprocessing, stt, diarization, tagging, transcript
+    from app.models import user, audio_file, preprocessing, stt, diarization, tagging, transcript, todo
 
     # LangSmith 추적 환경 변수 확인 및 자동 조정
     langchain_tracing = os.getenv("LANGCHAIN_TRACING_V2", "false")
@@ -66,7 +66,7 @@ async def health_check():
 
 
 # API 라우터 추가
-from app.api.v1 import auth, oauth, upload, tagging, processing, dashboard, rag
+from app.api.v1 import auth, oauth, upload, tagging, processing, dashboard, rag, todo
 app.include_router(auth.router, prefix=settings.API_V1_STR, tags=["auth"])
 app.include_router(oauth.router, prefix=settings.API_V1_STR, tags=["oauth"])
 app.include_router(upload.router, prefix=settings.API_V1_STR, tags=["upload"])
@@ -74,3 +74,4 @@ app.include_router(tagging.router, prefix=f"{settings.API_V1_STR}/tagging", tags
 app.include_router(processing.router, prefix=settings.API_V1_STR, tags=["processing"])
 app.include_router(dashboard.router, prefix=f"{settings.API_V1_STR}/dashboard", tags=["dashboard"])
 app.include_router(rag.router, prefix=f"{settings.API_V1_STR}/rag", tags=["rag"])
+app.include_router(todo.router, prefix=f"{settings.API_V1_STR}", tags=["todo"])

@@ -91,6 +91,63 @@ frontend/src/pages/RagPage.jsx
 
 ---
 
+## [2025-11-24] Docker 구성 GPU 전용 통합
+
+### ✅ 완료된 작업
+
+#### 1. **Docker 구성 단순화 (GPU 전용)**
+- **문제**: CPU/Mac/CUDA 플랫폼 조건부 로직으로 인한 복잡성
+- **변경 내용**:
+  - `backend/Dockerfile`에서 ARG PLATFORM 제거
+  - 모든 조건부 if 문 제거
+  - **requirements 파일 통합**: `requirements-base.txt` + `requirements-gpu.txt` → `requirements.txt` (단일 파일)
+  - GPU 전용 의존성 항상 설치:
+    - PyTorch 2.1.0+cu118 (CUDA 11.8)
+    - Senko with NVIDIA support
+    - NeMo Toolkit with ASR (GPU 전용)
+    - CUDA 라이브러리 심볼릭 링크 항상 생성
+  - `docker-compose.yml`에서 PLATFORM 빌드 인자 제거
+  - `.env`에서 DOCKER_PLATFORM 변수 제거
+- **결과**:
+  - 빌드 프로세스 단순화
+  - GPU 환경에 최적화된 단일 구성
+  - 유지보수 용이성 향상
+  - 의존성 관리 단순화 (하나의 requirements.txt 파일)
+
+#### 2. **최신 의존성 포함**
+- **LangChain 스택**:
+  - langchain==1.0.8
+  - langchain-openai==1.0.3
+  - langchain-community==0.4.1
+  - langgraph==1.0.3
+  - langsmith==0.4.46
+- **RAG 시스템**:
+  - chromadb==1.3.5
+  - langchain-chroma==1.0.0
+- **AI/ML 도구**:
+  - transformers==4.36.0
+  - openai==2.8.1
+  - pyannote.audio==3.1.1
+
+### 📊 영향받은 파일
+
+#### Docker Configuration
+```
+backend/Dockerfile (ARG 및 조건부 로직 제거)
+backend/requirements.txt (통합 파일 생성)
+docker-compose.yml (PLATFORM 빌드 인자 제거)
+.env (DOCKER_PLATFORM 변수 제거)
+```
+
+### 🎯 주요 성과
+
+1. **단순화**: 조건부 로직 완전 제거로 빌드 프로세스 단순화
+2. **최적화**: GPU 환경에 특화된 구성
+3. **최신 상태**: LangChain, ChromaDB 등 최신 의존성 포함
+4. **유지보수성**: 단일 구성으로 관리 용이
+
+---
+
 ## [2025-11-24] UI/UX 개선 및 버그 수정
 
 ### ✅ 완료된 작업

@@ -19,13 +19,11 @@ services:
       timeout: 5s
       retries: 5
 
-  # FastAPI Backend
+  # FastAPI Backend (GPU Only)
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-      args:
-        PLATFORM: ${DOCKER_PLATFORM:-cpu}  # cpu, cuda, mac (.env에서 설정)
     container_name: listencare_backend
     restart: unless-stopped
     env_file:

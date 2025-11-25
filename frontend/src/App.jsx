@@ -15,6 +15,7 @@ import TaggingAnalyzingPage from './pages/TaggingAnalyzingPage'
 import TaggingPageNew from './pages/TaggingPageNew'
 import ResultPageNew from './pages/ResultPageNew'
 import RagPage from './pages/RagPage'
+import TodoPage from './pages/TodoPage'
 import TestLatestPage from './pages/TestLatestPage'
 
 function App() {
@@ -109,6 +110,16 @@ function App() {
                 <ProtectedRoute>
                   <MainLayout>
                     <RagPage />
+                  </MainLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/todo/:fileId"
+              element={
+                <ProtectedRoute>
+                  <MainLayout>
+                    <TodoPage />
                   </MainLayout>
                 </ProtectedRoute>
               }

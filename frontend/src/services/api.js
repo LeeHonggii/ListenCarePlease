@@ -7,6 +7,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  timeout: 1800000, 
 });
 
 // 파일 업로드
@@ -111,6 +112,34 @@ export const confirmTagging = async (fileId, mappings) => {
 // 태깅 결과 조회
 export const getTaggingResult = async (fileId) => {
   const response = await api.get(`/api/v1/tagging/${fileId}/result`);
+  return response.data;
+};
+
+// ===== TODO API =====
+
+// TODO 추출 및 저장
+export const extractTodos = async (fileId, meetingDate = null) => {
+  const response = await api.post(`/api/v1/todos/extract/${fileId}`, {
+    meeting_date: meetingDate
+  });
+  return response.data;
+};
+
+// TODO 리스트 조회
+export const getTodos = async (fileId) => {
+  const response = await api.get(`/api/v1/todos/${fileId}`);
+  return response.data;
+};
+
+// 모든 TODO 삭제
+export const deleteAllTodos = async (fileId) => {
+  const response = await api.delete(`/api/v1/todos/${fileId}`);
+  return response.data;
+};
+
+// 특정 TODO 삭제
+export const deleteTodo = async (fileId, todoId) => {
+  const response = await api.delete(`/api/v1/todos/${fileId}/${todoId}`);
   return response.data;
 };
 
