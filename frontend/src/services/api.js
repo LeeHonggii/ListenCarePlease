@@ -175,4 +175,32 @@ export const deleteAudioFile = async (fileId) => {
   return response.data;
 };
 
+// ===== 효율성 분석 API =====
+
+// 효율성 분석 트리거 (백그라운드 작업)
+export const triggerEfficiencyAnalysis = async (fileId) => {
+  const response = await api.post(`/api/v1/efficiency/analyze/${fileId}`);
+  return response.data;
+};
+
+// 개별 회의 효율성 조회
+export const getEfficiencyAnalysis = async (fileId) => {
+  const response = await api.get(`/api/v1/efficiency/${fileId}`);
+  return response.data;
+};
+
+// 전체 회의 효율성 요약 (대시보드용)
+export const getEfficiencyOverview = async (limit = 10) => {
+  const response = await api.get(`/api/v1/efficiency/overview`, {
+    params: { limit }
+  });
+  return response.data;
+};
+
+// 특정 화자의 효율성 지표 조회
+export const getSpeakerEfficiency = async (fileId, speakerLabel) => {
+  const response = await api.get(`/api/v1/efficiency/${fileId}/speaker/${speakerLabel}`);
+  return response.data;
+};
+
 export default api;

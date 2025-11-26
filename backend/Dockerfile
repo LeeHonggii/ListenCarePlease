@@ -6,6 +6,10 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
+    make \
+    autoconf \
+    automake \
+    libtool \
     default-libmysqlclient-dev \
     pkg-config \
     ffmpeg \
@@ -17,11 +21,39 @@ RUN apt-get update && apt-get install -y \
     libswscale-dev \
     libswresample-dev \
     git \
+    curl \
+    wget \
     && rm -rf /var/lib/apt/lists/*
 
 # Python 의존성 설치 (통합 GPU 전용)
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Mecab + mecab-ko-dic 설치 (한국어 형태소 분석)
+RUN echo "Installing Mecab and mecab-ko-dic..." && \
+    # Mecab 소스 다운로드 및 설치
+    cd /tmp && \
+    wget https://bitbucket.org/eunjeon/mecab-ko/downloads/mecab-0.996-ko-0.9.2.tar.gz && \
+    tar xvf mecab-0.996-ko-0.9.2.tar.gz && \
+    cd mecab-0.996-ko-0.9.2 && \
+    ./configure && \
+    make && \
+    make install && \
+    ldconfig && \
+    # mecab-ko-dic 다운로드 및 설치
+    cd /tmp && \
+    wget https://bitbucket.org/eunjeon/mecab-ko-dic/downloads/mecab-ko-dic-2.1.1-20180720.tar.gz && \
+    tar xvf mecab-ko-dic-2.1.1-20180720.tar.gz && \
+    cd mecab-ko-dic-2.1.1-20180720 && \
+    ./autogen.sh && \
+    ./configure && \
+    make && \
+    make install && \
+    # mecab-python3 설치
+    pip install --no-cache-dir mecab-python3 && \
+    # 임시 파일 정리
+    rm -rf /tmp/mecab* && \
+    echo "Mecab installation complete"
 
 # Senko 설치 (화자 분리 모델 1) - NVIDIA GPU 지원
 RUN echo "Installing Senko with NVIDIA support..." && \

@@ -1,16 +1,20 @@
 import React, { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import { getDashboardStats } from '../services/api'
+import { getDashboardStats, getEfficiencyOverview } from '../services/api'
 
 export default function DashboardPageNew() {
+  const navigate = useNavigate()
   const { user } = useAuth()
   const [stats, setStats] = useState(null)
   const [period, setPeriod] = useState('week')
   const [isLoading, setIsLoading] = useState(true)
+  const [efficiencyData, setEfficiencyData] = useState(null)
 
   useEffect(() => {
     if (user?.id) {
       loadStats()
+      loadEfficiency()
     }
   }, [user, period])
 
@@ -25,6 +29,15 @@ export default function DashboardPageNew() {
       console.error('Failed to load stats:', error)
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const loadEfficiency = async () => {
+    try {
+      const data = await getEfficiencyOverview(5)
+      setEfficiencyData(data)
+    } catch (error) {
+      console.error('Failed to load efficiency data:', error)
     }
   }
 
@@ -174,6 +187,38 @@ export default function DashboardPageNew() {
           </div>
         </div>
       </div>
+
+      {/* 회의 효율성 개요 */}
+      {efficiencyData && efficiencyData.total_count > 0 && (
+        <div className="mt-8 bg-bg-tertiary dark:bg-bg-tertiary-dark rounded-xl p-6 border border-bg-accent/30">
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
+            🎯 회의 효율성 분석
+          </h2>
+          <div className="space-y-3">
+            {efficiencyData.analyses.map((analysis) => (
+              <button
+                key={analysis.audio_file_id}
+                onClick={() => navigate(`/efficiency/${analysis.audio_file_id}`)}
+                className="w-full flex items-center justify-between p-4 rounded-lg bg-bg-secondary dark:bg-bg-secondary-dark hover:bg-bg-accent/20 dark:hover:bg-bg-accent/20 transition-colors"
+              >
+                <div className="flex-1 text-left">
+                  <p className="font-medium text-gray-900 dark:text-white truncate">
+                    {analysis.filename}
+                  </p>
+                  <div className="flex items-center gap-4 mt-1 text-sm text-gray-600 dark:text-gray-400">
+                    <span>엔트로피: {analysis.entropy_avg?.toFixed(2) || 'N/A'}</span>
+                    <span>화자: {analysis.total_speakers}명</span>
+                    <span>발화: {analysis.total_turns}회</span>
+                  </div>
+                </div>
+                <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

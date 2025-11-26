@@ -111,15 +111,24 @@ export default function ResultPageNew() {
               화자별 발화 통계와 전체 회의록을 확인하세요
             </p>
           </div>
-          <button
-            onClick={() => navigate(`/tagging/${fileId}`)}
-            className="flex items-center gap-2 px-4 py-2 bg-accent-sage dark:bg-accent-teal hover:opacity-90 text-gray-900 dark:text-white rounded-lg font-medium transition-all"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-            </svg>
-            수정하기
-          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={() => navigate(`/efficiency/${fileId}`)}
+              className="flex items-center gap-2 px-4 py-2 bg-bg-tertiary dark:bg-bg-tertiary-dark hover:bg-bg-accent/20 text-gray-900 dark:text-white rounded-lg font-medium transition-all border border-bg-accent/30"
+            >
+              <span>🎯</span>
+              효율성 분석
+            </button>
+            <button
+              onClick={() => navigate(`/tagging/${fileId}`)}
+              className="flex items-center gap-2 px-4 py-2 bg-accent-sage dark:bg-accent-teal hover:opacity-90 text-gray-900 dark:text-white rounded-lg font-medium transition-all"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+              수정하기
+            </button>
+          </div>
         </div>
 
         {/* 통계 카드 */}

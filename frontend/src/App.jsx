@@ -16,6 +16,7 @@ import TaggingPageNew from './pages/TaggingPageNew'
 import ResultPageNew from './pages/ResultPageNew'
 import RagPage from './pages/RagPage'
 import TodoPage from './pages/TodoPage'
+import EfficiencyPage from './pages/EfficiencyPage'
 import TestLatestPage from './pages/TestLatestPage'
 
 function App() {
@@ -120,6 +121,16 @@ function App() {
                 <ProtectedRoute>
                   <MainLayout>
                     <TodoPage />
+                  </MainLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/efficiency/:fileId"
+              element={
+                <ProtectedRoute>
+                  <MainLayout>
+                    <EfficiencyPage />
                   </MainLayout>
                 </ProtectedRoute>
               }

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import axios from 'axios'
+import { triggerEfficiencyAnalysis } from '../services/api'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -70,6 +71,15 @@ export default function TaggingPageNew() {
         file_id: fileId,
         mappings: finalMappings
       })
+
+      // 효율성 분석 자동 트리거 (백그라운드 작업)
+      console.log('효율성 분석 자동 시작...')
+      try {
+        await triggerEfficiencyAnalysis(fileId)
+        console.log('효율성 분석이 백그라운드에서 시작되었습니다.')
+      } catch (effError) {
+        console.warn('효율성 분석 트리거 실패 (무시하고 계속):', effError)
+      }
 
       navigate(`/result/${fileId}`)
     } catch (error) {
