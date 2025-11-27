@@ -91,6 +91,148 @@ frontend/src/pages/RagPage.jsx
 
 ---
 
+## [2025-11-27] 회의 효율성 분석 기능 구현 완료
+
+### ✅ 완료된 작업
+
+#### 1. **전체 회의 지표 계산 및 AI 인사이트 추가**
+- **전체 회의 지표 4종 구현**:
+  - TTR (Type-Token Ratio): 전체 회의의 어휘 다양성
+  - 정보량 (Information Content): 코사인 유사도 기반 의미적 거리
+  - 문장 확률 (Sentence Probability): HDBSCAN 군집화 기반 이례적 발언 감지
+  - PPL (Perplexity): KoGPT-2 기반 대화 복잡도
+- **AI 인사이트 생성**: GPT-4o-mini를 활용한 지표별 한줄 평
+  - 개별 화자 5개 지표 × N명
+  - 전체 회의 5개 지표 (엔트로피 + 위 4종)
+- **DB 스키마 확장**: `meeting_efficiency_analysis` 테이블에 4개 JSON 컬럼 추가
+  - `overall_ttr`
+  - `overall_information_content`
+  - `overall_sentence_probability`
+  - `overall_perplexity`
+
+#### 2. **자동 효율성 분석 트리거 구현**
+- **화자 태깅 완료 후 자동 실행**: `POST /api/v1/tagging/confirm` 엔드포인트에서 BackgroundTasks로 자동 실행
+- **중복 트리거 제거**: 프론트엔드에서 수동 호출 제거, 백엔드에서만 관리
+- **워크플로우**:
+  ```
+  화자 태깅 확정
+    ↓
+  BackgroundTasks로 효율성 분석 시작
+    ↓
+  5가지 지표 계산 (화자별 + 전체 회의)
+    ↓
+  AI 인사이트 생성
+    ↓
+  DB 저장
+  ```
+
+#### 3. **결과 캐싱 구현**
+- **캐싱 로직**: `force` 파라미터를 통한 선택적 재분석
+  - `force=false` (기본값): 기존 결과가 있으면 캐싱된 결과 반환
+  - `force=true`: 기존 결과 무시하고 재분석
+- **성능 개선**: 불필요한 재분석 방지로 응답 속도 향상
+- **API 응답**:
+  ```json
+  {
+    "message": "Efficiency analysis already completed",
+    "status": "completed",
+    "analyzed_at": "2025-11-27T10:30:00Z"
+  }
+  ```
+
+#### 4. **에러 처리 개선**
+- **NaN/Infinity 필터링**:
+  - PPL 계산 중 발생하는 NaN/Infinity 값 제거
+  - 통계 계산 후에도 검증하여 0.0으로 대체
+  ```python
+  if not np.isnan(ppl) and not np.isinf(ppl):
+      ppl_values.append({"window_index": i, "ppl": float(ppl)})
+
+  if np.isnan(ppl_avg) or np.isinf(ppl_avg):
+      ppl_avg = 0.0
+  ```
+- **dict 타입 처리**:
+  - `generate_insight()` 함수에서 dict 값 건너뛰기
+  - 숫자 값만 추출하여 추세 계산
+  ```python
+  numeric_values = []
+  for v in values:
+      if isinstance(v, (int, float)):
+          numeric_values.append(v)
+  ```
+
+#### 5. **UI/UX 개선**
+- **중복 섹션 제거**: "전체 회의 종합 분석" 섹션 삭제
+  - "화자별 효율성 지표" 섹션의 "전체 회의" 탭으로 통합
+- **폴링 제한**: 무한 로딩 방지
+  - 최대 60회 (3초 × 60 = 3분)
+  - 타임아웃 시 명확한 에러 메시지
+- **AI 인사이트 표시**: 모든 지표에 GPT-4o-mini 생성 코멘트 표시
+
+### 🔧 기술 개선
+
+#### 1. **Backend 서비스 확장**
+- **efficiency_analyzer.py**: 4개 메서드 추가
+  - `_calc_overall_ttr()` (lines 617-661)
+  - `_calc_overall_information_content()` (lines 663-709)
+  - `_calc_overall_sentence_probability()` (lines 711-745)
+  - `_calc_overall_perplexity()` (lines 747-785)
+
+#### 2. **API 엔드포인트 개선**
+- **efficiency.py**:
+  - `generate_insight()`: dict 타입 처리 추가 (lines 36-56)
+  - `trigger_efficiency_analysis()`: 캐싱 로직 추가 (lines 124-175)
+  - `get_efficiency_result()`: 전체 회의 지표 + 인사이트 포함 (lines 256-300, 360-399)
+
+#### 3. **프론트엔드 개선**
+- **EfficiencyPage.jsx**:
+  - `calculateOverallMetrics()`: 백엔드 overall 지표 사용 (lines 54-91)
+  - 폴링 제한 추가 (lines 42-43, 115-133)
+  - 중복 섹션 제거 (lines 357-361)
+- **TaggingPageNew.jsx**:
+  - 중복 트리거 제거 (lines 75-77)
+
+### 📊 영향받은 파일
+
+#### Backend
+```
+backend/app/services/efficiency_analyzer.py
+backend/app/models/efficiency.py
+backend/app/api/v1/efficiency.py
+backend/app/api/v1/tagging.py
+```
+
+#### Frontend
+```
+frontend/src/pages/EfficiencyPage.jsx
+frontend/src/pages/TaggingPageNew.jsx
+```
+
+#### Documentation
+```
+docs/EFFICIENCY_ANALYSIS.md (신규 생성)
+```
+
+### 🎯 주요 성과
+
+1. **완전한 효율성 분석 시스템**: 5가지 지표 (엔트로피, TTR, 정보량, 문장 확률, PPL) 완전 구현
+2. **AI 코멘터리**: 모든 지표에 대한 GPT-4o-mini 기반 인사이트 제공
+3. **자동화**: 화자 태깅 완료 후 자동 분석 실행
+4. **성능 최적화**: 결과 캐싱으로 불필요한 재계산 방지
+5. **안정성**: NaN/Infinity 처리, dict 타입 처리 등 예외 상황 대응
+6. **문서화**: 상세 기능 문서 작성 (EFFICIENCY_ANALYSIS.md)
+
+### 📝 기술 스택
+- **AI 모델**:
+  - GPT-4o-mini: 인사이트 생성
+  - KoGPT-2 (skt/kogpt2-base-v2): Perplexity 계산
+  - Sentence Transformers (paraphrase-multilingual-MiniLM-L12-v2): 정보량 계산
+  - Mecab: 형태소 분석 (TTR, 엔트로피)
+- **군집화**: HDBSCAN (문장 확률)
+- **수치 처리**: NumPy, PyTorch
+
+---
+
 ## [2025-11-24] Docker 구성 GPU 전용 통합
 
 ### ✅ 완료된 작업

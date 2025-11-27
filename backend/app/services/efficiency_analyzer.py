@@ -156,16 +156,30 @@ class EfficiencyAnalyzer:
         # 전체 회의 엔트로피
         entropy_data = self._calc_entropy()
 
+        # 전체 회의 지표 계산
+        logger.info("Calculating overall meeting metrics...")
+        overall_ttr = self._calc_overall_ttr()
+        overall_info_content = self._calc_overall_information_content()
+        overall_sentence_prob = self._calc_overall_sentence_probability()
+        overall_ppl = self._calc_overall_perplexity()
+
         # DB 저장 객체 생성
+        from datetime import datetime, timezone
         analysis = MeetingEfficiencyAnalysis(
             audio_file_id=self.audio_file_id,
             entropy_values=entropy_data["values"],
             entropy_avg=entropy_data["avg"],
             entropy_std=entropy_data["std"],
             speaker_metrics=speaker_metrics,
+            overall_ttr=overall_ttr,
+            overall_information_content=overall_info_content,
+            overall_sentence_probability=overall_sentence_prob,
+            overall_perplexity=overall_ppl,
             total_speakers=len(self.speaker_mappings),
             total_turns=self._count_total_turns(),
-            total_sentences=len(self.final_transcripts)
+            total_sentences=len(self.final_transcripts),
+            analysis_version="1.0",
+            analyzed_at=datetime.now(timezone.utc)
         )
 
         logger.info(f"Efficiency analysis completed for audio_file_id={self.audio_file_id}")
@@ -387,6 +401,8 @@ class EfficiencyAnalyzer:
 
         if not speaker_transcripts or len(speaker_transcripts) < 5:
             return {
+                "avg_probability": 0.0,
+                "outlier_ratio": 0.0,
                 "cluster_info": [],
                 "rare_sentences": []
             }
@@ -428,13 +444,25 @@ class EfficiencyAnalyzer:
                         "cluster_id": int(label)
                     })
 
+            # 평균 확률 및 이상치 비율 계산
+            outlier_count = sum(1 for label in cluster_labels if label == -1 or cluster_counts[label] < 3)
+            outlier_ratio = outlier_count / total_sentences if total_sentences > 0 else 0.0
+
+            # 평균 확률 (정상 군집의 평균 확률)
+            normal_probs = [count / total_sentences for label, count in cluster_counts.items() if label != -1 and count >= 3]
+            avg_probability = np.mean(normal_probs) if normal_probs else 0.0
+
             return {
+                "avg_probability": float(avg_probability),
+                "outlier_ratio": float(outlier_ratio),
                 "cluster_info": sorted(cluster_info, key=lambda x: x["probability"], reverse=True),
                 "rare_sentences": rare_sentences[:10]  # 최대 10개
             }
         except Exception as e:
             logger.error(f"Error calculating sentence probability: {e}", exc_info=True)
             return {
+                "avg_probability": 0.0,
+                "outlier_ratio": 0.0,
                 "cluster_info": [],
                 "rare_sentences": []
             }
@@ -581,3 +609,185 @@ class EfficiencyAnalyzer:
             "avg": entropy_avg,
             "std": entropy_std
         }
+
+    # ========================================
+    # 전체 회의 지표 계산
+    # ========================================
+
+    def _calc_overall_ttr(self) -> Dict[str, Any]:
+        """전체 회의 TTR (Type-Token Ratio) 계산"""
+        try:
+            mecab = get_mecab()
+
+            # 모든 화자의 텍스트 수집
+            all_texts = [t.text for t in self.final_transcripts if t.text]
+            if not all_texts:
+                return None
+
+            combined_text = " ".join(all_texts)
+
+            # 형태소 분석
+            if mecab:
+                morphs = mecab.morphs(combined_text)
+            else:
+                morphs = combined_text.split()
+
+            if not morphs:
+                return None
+
+            # TTR 계산
+            types = len(set(morphs))
+            tokens = len(morphs)
+            ttr = types / tokens if tokens > 0 else 0.0
+
+            # 윈도우 기반 TTR 계산 (시계열)
+            window_size = 50
+            ttr_values = []
+            for i in range(0, len(morphs), window_size):
+                window = morphs[i:i + window_size]
+                if len(window) >= 10:
+                    window_ttr = len(set(window)) / len(window)
+                    ttr_values.append(window_ttr)
+
+            return {
+                "ttr_avg": float(ttr),
+                "ttr_std": float(np.std(ttr_values)) if ttr_values else 0.0,
+                "ttr_values": ttr_values[:100],  # 최대 100개
+                "total_types": types,
+                "total_tokens": tokens
+            }
+        except Exception as e:
+            logger.error(f"Error calculating overall TTR: {e}")
+            return None
+
+    def _calc_overall_information_content(self) -> Dict[str, Any]:
+        """전체 회의 정보량 (Information Content) 계산"""
+        try:
+            model = get_embedding_model()
+
+            # 모든 문장 임베딩
+            sentences = [t.text for t in self.final_transcripts if t.text]
+            if len(sentences) < 2:
+                return None
+
+            embeddings = model.encode(sentences)
+
+            # 연속된 문장 간 코사인 유사도
+            similarities = []
+            for i in range(len(embeddings) - 1):
+                sim = cosine_similarity([embeddings[i]], [embeddings[i + 1]])[0][0]
+                similarities.append(float(sim))
+
+            # 정보 점수 = 1 - 평균 유사도 (낮은 유사도 = 높은 정보량)
+            avg_similarity = float(np.mean(similarities)) if similarities else 0.0
+            information_score = 1.0 - avg_similarity
+
+            return {
+                "avg_similarity": avg_similarity,
+                "information_score": information_score,
+                "total_sentences": len(sentences)
+            }
+        except Exception as e:
+            logger.error(f"Error calculating overall information content: {e}")
+            return None
+
+    def _calc_overall_sentence_probability(self) -> Dict[str, Any]:
+        """전체 회의 문장 확률 (Sentence Probability) 계산"""
+        try:
+            model = get_embedding_model()
+
+            # 모든 문장 임베딩
+            sentences = [t.text for t in self.final_transcripts if t.text]
+            if len(sentences) < 10:
+                return {
+                    "avg_probability": 0.0,
+                    "outlier_ratio": 1.0,
+                    "total_sentences": len(sentences)
+                }
+
+            embeddings = model.encode(sentences)
+
+            # HDBSCAN 클러스터링으로 이상치 탐지
+            clusterer = hdbscan.HDBSCAN(min_cluster_size=max(2, len(sentences) // 10))
+            labels = clusterer.fit_predict(embeddings)
+
+            # 이상치 (-1 레이블) 비율
+            outliers = sum(1 for label in labels if label == -1)
+            outlier_ratio = outliers / len(labels) if len(labels) > 0 else 0.0
+
+            # 평균 확률 (클러스터에 속한 비율)
+            avg_probability = 1.0 - outlier_ratio
+
+            return {
+                "avg_probability": float(avg_probability),
+                "outlier_ratio": float(outlier_ratio),
+                "total_sentences": len(sentences)
+            }
+        except Exception as e:
+            logger.error(f"Error calculating overall sentence probability: {e}")
+            return None
+
+    def _calc_overall_perplexity(self) -> Dict[str, Any]:
+        """전체 회의 Perplexity (PPL) 계산"""
+        try:
+            gpt2_model, gpt2_tokenizer = get_gpt2_model()
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+
+            # 모든 문장 수집
+            sentences = [t.text for t in self.final_transcripts if t.text]
+            if not sentences:
+                return None
+
+            # 윈도우 단위로 PPL 계산
+            window_size = 10
+            ppl_values = []
+
+            for i in range(0, len(sentences), window_size):
+                window_sentences = sentences[i:i + window_size]
+                combined_text = " ".join(window_sentences)
+
+                try:
+                    encodings = gpt2_tokenizer(combined_text, return_tensors="pt")
+                    input_ids = encodings.input_ids.to(device)
+
+                    if input_ids.size(1) > 1024:
+                        input_ids = input_ids[:, :1024]
+
+                    with torch.no_grad():
+                        outputs = gpt2_model(input_ids, labels=input_ids)
+                        loss = outputs.loss
+                        ppl = torch.exp(loss).item()
+
+                    # NaN, Infinity 체크
+                    if not np.isnan(ppl) and not np.isinf(ppl):
+                        ppl_values.append({
+                            "window_index": i // window_size,
+                            "ppl": float(ppl)
+                        })
+                except Exception as e:
+                    logger.warning(f"Error calculating PPL for window {i}: {e}")
+                    continue
+
+            if not ppl_values:
+                return None
+
+            # 통계
+            ppl_scores = [v["ppl"] for v in ppl_values]
+            ppl_avg = float(np.mean(ppl_scores)) if ppl_scores else 0.0
+            ppl_std = float(np.std(ppl_scores)) if ppl_scores else 0.0
+
+            # NaN 체크
+            if np.isnan(ppl_avg) or np.isinf(ppl_avg):
+                ppl_avg = 0.0
+            if np.isnan(ppl_std) or np.isinf(ppl_std):
+                ppl_std = 0.0
+
+            return {
+                "ppl_avg": ppl_avg,
+                "ppl_std": ppl_std,
+                "ppl_values": ppl_values[:100],  # 최대 100개
+                "total_windows": len(ppl_values)
+            }
+        except Exception as e:
+            logger.error(f"Error calculating overall perplexity: {e}")
+            return None

@@ -23,6 +23,18 @@ class MeetingEfficiencyAnalysis(Base):
     entropy_avg = Column(Float, nullable=True)  # 평균 엔트로피
     entropy_std = Column(Float, nullable=True)  # 표준편차
 
+    # 전체 회의 TTR
+    overall_ttr = Column(JSON, nullable=True)
+
+    # 전체 회의 정보량
+    overall_information_content = Column(JSON, nullable=True)
+
+    # 전체 회의 문장 확률
+    overall_sentence_probability = Column(JSON, nullable=True)
+
+    # 전체 회의 PPL
+    overall_perplexity = Column(JSON, nullable=True)
+
     # === 화자별 상세 지표 (JSON 배열) ===
     # 각 화자에 대한 5가지 지표를 JSON으로 저장
     speaker_metrics = Column(JSON, nullable=False)

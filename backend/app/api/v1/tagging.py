@@ -395,6 +395,7 @@ async def run_tagging_agent(file_id: str, audio_file_id: int, user_id: int):
 @router.post("/confirm", response_model=TaggingConfirmResponse)
 async def confirm_tagging(
     request: TaggingConfirmRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
     """
@@ -518,7 +519,11 @@ async def confirm_tagging(
 
     db.commit()
 
-    response_message = "화자 태깅이 완료되었습니다."
+    # 화자 태깅 완료 후 효율성 분석 자동 실행
+    from app.api.v1.efficiency import run_efficiency_analysis
+    background_tasks.add_task(run_efficiency_analysis, audio_file.id)
+
+    response_message = "화자 태깅이 완료되었습니다. 효율성 분석이 백그라운드에서 실행됩니다."
     if needs_rag_reinit:
         response_message += " 화자명이 변경되어 벡터 DB가 삭제되었습니다. RAG 기능을 사용하려면 다시 초기화해주세요."
 

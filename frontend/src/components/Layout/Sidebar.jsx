@@ -206,8 +206,8 @@ export default function Sidebar() {
               : 'text-gray-600 dark:text-gray-400 hover:bg-bg-tertiary dark:hover:bg-bg-tertiary-dark'
           }`}
         >
-          <span>📊</span>
-          <span className="text-sm font-medium">대시보드</span>
+          <span>🏠</span>
+          <span className="text-sm font-medium">메인</span>
         </button>
       </div>
     </div>

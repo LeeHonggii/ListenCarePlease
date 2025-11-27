@@ -72,14 +72,8 @@ export default function TaggingPageNew() {
         mappings: finalMappings
       })
 
-      // 효율성 분석 자동 트리거 (백그라운드 작업)
-      console.log('효율성 분석 자동 시작...')
-      try {
-        await triggerEfficiencyAnalysis(fileId)
-        console.log('효율성 분석이 백그라운드에서 시작되었습니다.')
-      } catch (effError) {
-        console.warn('효율성 분석 트리거 실패 (무시하고 계속):', effError)
-      }
+      // 효율성 분석은 백엔드에서 자동으로 실행됨 (tagging.py confirm 엔드포인트에서 background_tasks 실행)
+      console.log('화자 태깅 완료. 효율성 분석은 백엔드에서 자동 실행됩니다.')
 
       navigate(`/result/${fileId}`)
     } catch (error) {
