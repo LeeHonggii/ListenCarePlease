@@ -57,6 +57,8 @@ class AudioFile(Base):
     summaries = relationship("Summary", back_populates="audio_file", cascade="all, delete-orphan")
     todos = relationship("TodoItem", back_populates="audio_file", cascade="all, delete-orphan")
     efficiency_analysis = relationship("MeetingEfficiencyAnalysis", back_populates="audio_file", uselist=False, cascade="all, delete-orphan")
+    meeting_sections = relationship("MeetingSection", back_populates="audio_file", cascade="all, delete-orphan")
+    key_terms = relationship("KeyTerm", back_populates="audio_file", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<AudioFile(id={self.id}, filename={self.original_filename}, status={self.status})>"

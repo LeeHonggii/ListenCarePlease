@@ -34,9 +34,16 @@ def get_embedding_model():
     """임베딩 모델 싱글톤"""
     global _embedding_model
     if _embedding_model is None:
-        logger.info("Loading sentence-transformers model...")
-        _embedding_model = SentenceTransformer('sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2')
-        logger.info("Model loaded successfully")
+        try:
+            logger.info("Loading sentence-transformers model...")
+            print("[DEBUG] Loading embedding model...")
+            _embedding_model = SentenceTransformer('sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2')
+            logger.info("Model loaded successfully")
+            print("[DEBUG] Embedding model loaded")
+        except Exception as e:
+            logger.error(f"Failed to load embedding model: {e}")
+            print(f"[DEBUG] Failed to load embedding model: {e}")
+            _embedding_model = None
     return _embedding_model
 
 
@@ -44,17 +51,22 @@ def get_gpt2_model():
     """GPT2 모델 싱글톤 (Perplexity 계산용)"""
     global _gpt2_model, _gpt2_tokenizer
     if _gpt2_model is None:
-        logger.info("Loading GPT2 model for PPL calculation...")
-        _gpt2_tokenizer = GPT2TokenizerFast.from_pretrained("skt/kogpt2-base-v2")
-        _gpt2_model = GPT2LMHeadModel.from_pretrained("skt/kogpt2-base-v2")
-        _gpt2_model.eval()
+        try:
+            logger.info("Loading GPT2 model for PPL calculation...")
+            _gpt2_tokenizer = GPT2TokenizerFast.from_pretrained("skt/kogpt2-base-v2")
+            _gpt2_model = GPT2LMHeadModel.from_pretrained("skt/kogpt2-base-v2")
+            _gpt2_model.eval()
 
-        # GPU 사용 가능하면 GPU로 이동
-        if torch.cuda.is_available():
-            _gpt2_model = _gpt2_model.cuda()
-            logger.info("GPT2 model loaded on GPU")
-        else:
-            logger.info("GPT2 model loaded on CPU")
+            # GPU 사용 가능하면 GPU로 이동
+            if torch.cuda.is_available():
+                _gpt2_model = _gpt2_model.cuda()
+                logger.info("GPT2 model loaded on GPU")
+            else:
+                logger.info("GPT2 model loaded on CPU")
+        except Exception as e:
+            logger.error(f"Failed to load GPT2 model: {e}")
+            _gpt2_model = None
+            _gpt2_tokenizer = None
     return _gpt2_model, _gpt2_tokenizer
 
 
@@ -82,7 +94,7 @@ class EfficiencyAnalyzer:
     - DB에 MeetingEfficiencyAnalysis 객체로 저장
     """
 
-    def __init__(self, audio_file_id: int, db: Session):
+    def __init__(self, audio_file_id, db: Session):
         self.audio_file_id = audio_file_id
         self.db = db
 
@@ -94,10 +106,24 @@ class EfficiencyAnalyzer:
         self.stt_results = self._load_stt()
 
     def _load_audio_file(self) -> AudioFile:
-        """오디오 파일 정보 로드"""
-        audio_file = self.db.query(AudioFile).filter(
-            AudioFile.id == self.audio_file_id
-        ).first()
+        """오디오 파일 정보 로드 - int 또는 str UUID 모두 지원"""
+        # Try by ID first (integer)
+        audio_file = None
+        try:
+            audio_file_id_int = int(self.audio_file_id)
+            audio_file = self.db.query(AudioFile).filter(
+                AudioFile.id == audio_file_id_int
+            ).first()
+        except (ValueError, TypeError):
+            pass
+
+        # If not found or not an integer, try by file_path containing UUID
+        if not audio_file:
+            audio_file = self.db.query(AudioFile).filter(
+                (AudioFile.file_path.like(f"%{self.audio_file_id}%")) |
+                (AudioFile.original_filename.like(f"%{self.audio_file_id}%"))
+            ).first()
+
         if not audio_file:
             raise ValueError(f"AudioFile {self.audio_file_id} not found")
         return audio_file
@@ -134,11 +160,13 @@ class EfficiencyAnalyzer:
             MeetingEfficiencyAnalysis: DB 저장용 객체
         """
         logger.info(f"Starting efficiency analysis for audio_file_id={self.audio_file_id}")
+        print(f"[DEBUG] EfficiencyAnalyzer.analyze_all started for {self.audio_file_id}")
 
         # 화자별 지표 계산
         speaker_metrics = []
         for speaker in self.speaker_mappings:
             logger.info(f"Analyzing speaker: {speaker.speaker_label}")
+            print(f"[DEBUG] Analyzing speaker: {speaker.speaker_label}")
 
             metrics = {
                 "speaker_label": speaker.speaker_label,
@@ -166,7 +194,7 @@ class EfficiencyAnalyzer:
         # DB 저장 객체 생성
         from datetime import datetime, timezone
         analysis = MeetingEfficiencyAnalysis(
-            audio_file_id=self.audio_file_id,
+            audio_file_id=self.audio_file.id,
             entropy_values=entropy_data["values"],
             entropy_avg=entropy_data["avg"],
             entropy_std=entropy_data["std"],
@@ -490,6 +518,13 @@ class EfficiencyAnalyzer:
         try:
             # GPT2 모델 로드
             model, tokenizer = get_gpt2_model()
+            if model is None or tokenizer is None:
+                logger.warning("GPT2 model not available, skipping PPL calculation")
+                return {
+                    "ppl_values": [],
+                    "ppl_avg": 0.0,
+                    "ppl_std": 0.0
+                }
             device = next(model.parameters()).device
 
             ppl_values = []
@@ -664,6 +699,8 @@ class EfficiencyAnalyzer:
         """전체 회의 정보량 (Information Content) 계산"""
         try:
             model = get_embedding_model()
+            if model is None:
+                return None
 
             # 모든 문장 임베딩
             sentences = [t.text for t in self.final_transcripts if t.text]
@@ -695,6 +732,8 @@ class EfficiencyAnalyzer:
         """전체 회의 문장 확률 (Sentence Probability) 계산"""
         try:
             model = get_embedding_model()
+            if model is None:
+                return None
 
             # 모든 문장 임베딩
             sentences = [t.text for t in self.final_transcripts if t.text]
@@ -731,6 +770,8 @@ class EfficiencyAnalyzer:
         """전체 회의 Perplexity (PPL) 계산"""
         try:
             gpt2_model, gpt2_tokenizer = get_gpt2_model()
+            if gpt2_model is None or gpt2_tokenizer is None:
+                return None
             device = "cuda" if torch.cuda.is_available() else "cpu"
 
             # 모든 문장 수집

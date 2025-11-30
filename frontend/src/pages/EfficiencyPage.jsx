@@ -406,192 +406,10 @@ export default function EfficiencyPage() {
         {/* 선택된 화자의 지표 */}
         {selectedSpeaker && (
           <div className="space-y-8">
-            {/* 1. Share of Voice - 발화 점유율 */}
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4 border-b-2 border-accent-blue pb-2">
-                1. 발화 점유율 (Share of Voice)
-              </h2>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* 시간 기반 도넛 차트 */}
-                <div className="bg-bg-secondary dark:bg-bg-secondary-dark rounded-lg p-6">
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 text-center">
-                    시간 기반
-                  </h3>
-                  <div style={{ height: '300px' }} className="flex items-center justify-center">
-                    <Doughnut
-                      data={{
-                        labels: analysis?.speaker_metrics?.map(s => s.speaker_name) || [],
-                        datasets: [{
-                          label: '발화 시간 (%)',
-                          data: analysis?.speaker_metrics?.map(s => s.turn_frequency?.total_duration || 0) || [],
-                          backgroundColor: [
-                            'rgba(99, 102, 241, 0.7)',
-                            'rgba(236, 72, 153, 0.7)',
-                            'rgba(34, 197, 94, 0.7)',
-                            'rgba(251, 146, 60, 0.7)',
-                            'rgba(168, 85, 247, 0.7)',
-                          ],
-                          borderColor: [
-                            'rgb(99, 102, 241)',
-                            'rgb(236, 72, 153)',
-                            'rgb(34, 197, 94)',
-                            'rgb(251, 146, 60)',
-                            'rgb(168, 85, 247)',
-                          ],
-                          borderWidth: 2
-                        }]
-                      }}
-                      options={{
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                          legend: {
-                            position: 'right',
-                            labels: {
-                              color: 'rgb(156, 163, 175)',
-                              font: { size: 12 },
-                              padding: 15,
-                              generateLabels: (chart) => {
-                                const data = chart.data
-                                const total = data.datasets[0].data.reduce((a, b) => a + b, 0)
-                                return data.labels.map((label, i) => {
-                                  const value = data.datasets[0].data[i]
-                                  const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0
-                                  return {
-                                    text: `${label}: ${percentage}%`,
-                                    fillStyle: data.datasets[0].backgroundColor[i],
-                                    hidden: false,
-                                    index: i
-                                  }
-                                })
-                              }
-                            }
-                          },
-                          tooltip: {
-                            callbacks: {
-                              label: (context) => {
-                                const value = context.parsed
-                                const total = context.dataset.data.reduce((a, b) => a + b, 0)
-                                const percentage = ((value / total) * 100).toFixed(1)
-                                return `${context.label}: ${value.toFixed(1)}초 (${percentage}%)`
-                              }
-                            }
-                          }
-                        },
-                        cutout: '50%'
-                      }}
-                    />
-                  </div>
-                </div>
-
-                {/* 토큰 기반 도넛 차트 */}
-                <div className="bg-bg-secondary dark:bg-bg-secondary-dark rounded-lg p-6">
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 text-center">
-                    토큰 기반 (발화 횟수)
-                  </h3>
-                  <div style={{ height: '300px' }} className="flex items-center justify-center">
-                    <Doughnut
-                      data={{
-                        labels: analysis?.speaker_metrics?.map(s => s.speaker_name) || [],
-                        datasets: [{
-                          label: '발화 횟수 (%)',
-                          data: analysis?.speaker_metrics?.map(s => s.turn_frequency?.turn_count || 0) || [],
-                          backgroundColor: [
-                            'rgba(99, 102, 241, 0.7)',
-                            'rgba(236, 72, 153, 0.7)',
-                            'rgba(34, 197, 94, 0.7)',
-                            'rgba(251, 146, 60, 0.7)',
-                            'rgba(168, 85, 247, 0.7)',
-                          ],
-                          borderColor: [
-                            'rgb(99, 102, 241)',
-                            'rgb(236, 72, 153)',
-                            'rgb(34, 197, 94)',
-                            'rgb(251, 146, 60)',
-                            'rgb(168, 85, 247)',
-                          ],
-                          borderWidth: 2
-                        }]
-                      }}
-                      options={{
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                          legend: {
-                            position: 'right',
-                            labels: {
-                              color: 'rgb(156, 163, 175)',
-                              font: { size: 12 },
-                              padding: 15,
-                              generateLabels: (chart) => {
-                                const data = chart.data
-                                const total = data.datasets[0].data.reduce((a, b) => a + b, 0)
-                                return data.labels.map((label, i) => {
-                                  const value = data.datasets[0].data[i]
-                                  const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0
-                                  return {
-                                    text: `${label}: ${percentage}%`,
-                                    fillStyle: data.datasets[0].backgroundColor[i],
-                                    hidden: false,
-                                    index: i
-                                  }
-                                })
-                              }
-                            }
-                          },
-                          tooltip: {
-                            callbacks: {
-                              label: (context) => {
-                                const value = context.parsed
-                                const total = context.dataset.data.reduce((a, b) => a + b, 0)
-                                const percentage = ((value / total) * 100).toFixed(1)
-                                return `${context.label}: ${value}회 (${percentage}%)`
-                              }
-                            }
-                          }
-                        },
-                        cutout: '50%'
-                      }}
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* 2. 발화 빈도 */}
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4 border-b-2 border-accent-teal pb-2">
-                2. 발화 빈도 (Turn-Taking Frequency)
-              </h2>
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                <div className="bg-bg-secondary dark:bg-bg-secondary-dark rounded-lg p-6">
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">발화 횟수</p>
-                  <p className="text-4xl font-bold text-accent-blue dark:text-accent-teal">
-                    {selectedSpeaker.turn_frequency?.turn_count || 0}
-                  </p>
-                  <p className="text-xs text-gray-500 dark:text-gray-500 mt-2">회</p>
-                </div>
-                <div className="bg-bg-secondary dark:bg-bg-secondary-dark rounded-lg p-6">
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">총 발화 시간</p>
-                  <p className="text-4xl font-bold text-accent-sage dark:text-accent-sage">
-                    {selectedSpeaker.turn_frequency?.total_duration?.toFixed(1) || 0}
-                  </p>
-                  <p className="text-xs text-gray-500 dark:text-gray-500 mt-2">초</p>
-                </div>
-                <div className="bg-bg-secondary dark:bg-bg-secondary-dark rounded-lg p-6">
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">평균 발화 길이</p>
-                  <p className="text-4xl font-bold text-purple-600 dark:text-purple-400">
-                    {selectedSpeaker.turn_frequency?.avg_turn_length?.toFixed(1) || 0}
-                  </p>
-                  <p className="text-xs text-gray-500 dark:text-gray-500 mt-2">초/회</p>
-                </div>
-              </div>
-            </div>
-
-            {/* 3. TTR */}
+            {/* 1. TTR */}
             <div>
               <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2 border-b-2 border-orange-500 pb-2">
-                3. TTR (Type-Token Ratio)
+                1. TTR (Type-Token Ratio)
               </h2>
               <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
                 고유 단어 수 / 전체 단어 수. 높을수록 어휘가 다양합니다.
@@ -698,10 +516,10 @@ export default function EfficiencyPage() {
               </div>
             </div>
 
-            {/* 4. 정보량 */}
+            {/* 2. 정보량 */}
             <div>
               <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2 border-b-2 border-purple-500 pb-2">
-                4. 정보량 (Information Content)
+                2. 정보량 (Information Content)
               </h2>
               <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
                 낮은 유사도 = 높은 정보량, 높은 유사도 = 반복적인 내용
@@ -737,10 +555,10 @@ export default function EfficiencyPage() {
               </div>
             </div>
 
-            {/* 5. 문장 확률 */}
+            {/* 3. 문장 확률 */}
             <div>
               <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2 border-b-2 border-teal-500 pb-2">
-                5. 문장 확률 (Sentence Probability)
+                3. 문장 확률 (Sentence Probability)
               </h2>
               <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
                 낮은 확률 = 비정상적 패턴, 높은 이상치 비율 = 예측 불가능
@@ -776,10 +594,10 @@ export default function EfficiencyPage() {
               </div>
             </div>
 
-            {/* 6. PPL (Perplexity) */}
+            {/* 4. PPL (Perplexity) */}
             <div>
               <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2 border-b-2 border-red-500 pb-2">
-                6. Perplexity (PPL)
+                4. Perplexity (PPL)
               </h2>
               <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
                 낮은 PPL = 유창한 흐름, 높은 PPL = 주제 전환 또는 예측 불가능

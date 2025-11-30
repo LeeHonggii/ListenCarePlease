@@ -158,6 +158,37 @@ def process_audio_pipeline(
             torch.cuda.empty_cache()  # CUDA 캐시 정리
         print("✅ 메모리 정리 완료")
 
+        # --- [Keyword Extraction Start] ---
+        # STT 텍스트 확보
+        full_transcript_text = final_txt.read_text(encoding='utf-8')
+        
+        # 키워드 추출을 위한 별도 스레드 시작 (Diarization과 병렬 실행)
+        import threading
+        import asyncio
+        from app.services.keyword_extractor import extract_keywords_from_text, save_keywords_to_db
+
+        keyword_extraction_result = {"keywords": []}
+        
+        def run_keyword_extraction_thread(text, result_container):
+            try:
+                # 새 이벤트 루프 생성 (스레드 내에서 비동기 실행)
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                keywords = loop.run_until_complete(extract_keywords_from_text(text))
+                result_container["keywords"] = keywords
+                loop.close()
+                print(f"✅ 키워드 추출 완료: {len(keywords)}개")
+            except Exception as e:
+                print(f"⚠️ 키워드 추출 실패: {e}")
+
+        keyword_thread = threading.Thread(
+            target=run_keyword_extraction_thread,
+            args=(full_transcript_text, keyword_extraction_result)
+        )
+        keyword_thread.start()
+        print("🚀 키워드 추출 스레드 시작 (병렬 실행)")
+        # --- [Keyword Extraction End] ---
+
         # 4) Diarization (화자 분리)
         diarization_method = "Senko" if diarization_mode == "senko" else "NeMo"
 
@@ -187,7 +218,7 @@ def process_audio_pipeline(
 
             # STT 결과 파싱
             stt_segments = []
-            for line in final_txt.read_text(encoding='utf-8').splitlines():
+            for line in full_transcript_text.splitlines():
                 if line.strip():
                     # [00:00:00.000 - 00:00:02.800] 텍스트 형식 파싱
                     import re
@@ -398,7 +429,20 @@ def process_audio_pipeline(
                             existing.nickname = nickname_info.get('nickname')
                             existing.nickname_metadata = nickname_info.get('nickname_metadata')
 
-                # 6-6) AudioFile 상태 업데이트: 완료
+                # 6-6) 키워드 저장 (스레드 조인 및 저장)
+                print("⏳ 키워드 추출 스레드 대기 중...")
+                keyword_thread.join(timeout=60) # 최대 60초 대기 (이미 완료되었을 가능성 높음)
+                if keyword_thread.is_alive():
+                    print("⚠️ 키워드 추출 스레드가 아직 실행 중입니다. (타임아웃)")
+                
+                extracted_keywords = keyword_extraction_result.get("keywords", [])
+                if extracted_keywords and merged_result:
+                    print(f"💾 키워드 {len(extracted_keywords)}개 DB 저장 중...")
+                    save_keywords_to_db(db, audio_file_id_db, extracted_keywords, merged_result)
+                else:
+                    print("⚠️ 저장할 키워드가 없거나 병합 결과가 없습니다.")
+
+                # 6-7) AudioFile 상태 업데이트: 완료
                 audio_file.status = FileStatus.COMPLETED
                 audio_file.processing_step = "completed"
                 audio_file.processing_progress = 100
@@ -419,6 +463,7 @@ def process_audio_pipeline(
                 print(f"  - STTResult 레코드: {len(merged_result) if merged_result else 0}개")
                 print(f"  - DiarizationResult 레코드: {len(diarization_result.get('turns', [])) if diarization_result else 0}개")
                 print(f"  - SpeakerMapping 레코드: {speaker_mapping_count}개")
+                print(f"  - KeyTerm 레코드: {len(extracted_keywords)}개")
 
             except Exception as db_error:
                 print(f"⚠️ DB 저장 실패: {db_error}")

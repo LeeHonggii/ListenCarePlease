@@ -35,6 +35,14 @@ class MeetingEfficiencyAnalysis(Base):
     # 전체 회의 PPL
     overall_perplexity = Column(JSON, nullable=True)
 
+    # === AI 인사이트 (LLM 생성 한줄 평) ===
+    entropy_insight = Column(String(500), nullable=True)  # 엔트로피 인사이트
+    overall_ttr_insight = Column(String(500), nullable=True)  # 전체 TTR 인사이트
+    overall_info_insight = Column(String(500), nullable=True)  # 전체 정보량 인사이트
+    overall_sentence_prob_insight = Column(String(500), nullable=True)  # 전체 문장 확률 인사이트
+    overall_ppl_insight = Column(String(500), nullable=True)  # 전체 PPL 인사이트
+    # 화자별 인사이트는 speaker_metrics JSON 내부에 'insights' 필드로 저장
+
     # === 화자별 상세 지표 (JSON 배열) ===
     # 각 화자에 대한 5가지 지표를 JSON으로 저장
     speaker_metrics = Column(JSON, nullable=False)

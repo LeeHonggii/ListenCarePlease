@@ -17,7 +17,13 @@
       "Bash(docker-compose restart:*)",
       "Bash(docker-compose logs:*)",
       "Bash(docker-compose exec:*)",
-      "Bash(docker-compose ps:*)"
+      "Bash(docker-compose ps:*)",
+      "Bash(docker-compose up:*)",
+      "Bash(docker compose build:*)",
+      "Bash(docker compose:*)",
+      "Bash(powershell -Command \"docker ps -a\")",
+      "Bash(docker volume:*)",
+      "Bash(docker system prune:*)"
     ],
     "deny": [],
     "ask": []

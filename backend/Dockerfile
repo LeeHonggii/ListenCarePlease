@@ -82,6 +82,14 @@ RUN python3 -c "import whisper; import os; os.makedirs('/root/.cache/whisper', e
 # 애플리케이션 코드 복사
 COPY ./app ./app
 
+# Alembic 설정 및 마이그레이션 파일 복사
+COPY ./alembic ./alembic
+COPY ./alembic.ini ./alembic.ini
+
+# Entrypoint 스크립트 복사 및 실행 권한 부여
+COPY ./entrypoint.sh ./entrypoint.sh
+RUN sed -i 's/\r$//' ./entrypoint.sh && chmod +x ./entrypoint.sh
+
 # 업로드 디렉토리 및 모델 캐시 디렉토리 생성
 RUN mkdir -p /app/uploads /app/temp /app/.cache
 
@@ -91,5 +99,5 @@ ENV LD_LIBRARY_PATH=/usr/local/lib/python3.11/site-packages/torch/lib:$LD_LIBRAR
 # 포트 노출
 EXPOSE 8000
 
-# 서버 실행 (production mode - no reload to prevent interrupting background tasks)
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# 서버 실행 (entrypoint 스크립트 사용 - 마이그레이션 자동 적용)
+CMD ["./entrypoint.sh"]

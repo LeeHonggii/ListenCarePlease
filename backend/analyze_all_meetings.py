@@ -6,7 +6,7 @@ import time
 from app.db.base import SessionLocal
 from app.models.audio_file import AudioFile
 from app.models.efficiency import MeetingEfficiencyAnalysis
-from app.agents.efficiency_analyzer import EfficiencyAnalyzer
+from app.services.efficiency_analyzer import EfficiencyAnalyzer
 from datetime import datetime, timezone
 
 def analyze_all_completed_meetings():

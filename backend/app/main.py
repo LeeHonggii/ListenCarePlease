@@ -24,7 +24,7 @@ async def startup_event():
     """앱 시작 시 실행되는 이벤트"""
     import os
     from app.db.base import Base, engine
-    from app.models import user, audio_file, preprocessing, stt, diarization, tagging, transcript, todo, efficiency
+    from app.models import user, audio_file, preprocessing, stt, diarization, tagging, transcript, todo, efficiency, section, keyword
 
     # LangSmith 추적 환경 변수 확인 및 자동 조정
     langchain_tracing = os.getenv("LANGCHAIN_TRACING_V2", "false")
@@ -76,3 +76,9 @@ app.include_router(dashboard.router, prefix=f"{settings.API_V1_STR}/dashboard", 
 app.include_router(rag.router, prefix=f"{settings.API_V1_STR}/rag", tags=["rag"])
 app.include_router(todo.router, prefix=f"{settings.API_V1_STR}", tags=["todo"])
 app.include_router(efficiency.router, prefix=f"{settings.API_V1_STR}/efficiency", tags=["efficiency"])
+
+from app.api.v1 import template
+app.include_router(template.router, prefix=f"{settings.API_V1_STR}/template", tags=["template"])
+
+from app.api.v1 import keyword
+app.include_router(keyword.router, prefix=f"{settings.API_V1_STR}/keyword", tags=["keyword"])

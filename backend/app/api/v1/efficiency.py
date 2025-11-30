@@ -14,6 +14,20 @@ from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 
+# 파일 로깅 설정
+try:
+    log_dir = "/app/uploads"
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir, exist_ok=True)
+    
+    file_handler = logging.FileHandler(os.path.join(log_dir, "efficiency_analysis.log"))
+    file_handler.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+except Exception as e:
+    print(f"Failed to setup file logging: {e}")
+
 router = APIRouter()
 
 # OpenAI 클라이언트 초기화
@@ -83,7 +97,7 @@ def generate_insight(metric_name: str, values: List[float], avg: float, std: flo
         return f"{metric_name} 분석이 완료되었습니다."
 
 
-def run_efficiency_analysis(audio_file_id: int):
+def run_efficiency_analysis(audio_file_id: str):
     """백그라운드 작업: 효율성 분석 실행"""
     print(f"[DEBUG] run_efficiency_analysis called with audio_file_id={audio_file_id}")
     # 백그라운드 태스크에서는 새로운 DB 세션 생성 필요
@@ -96,8 +110,126 @@ def run_efficiency_analysis(audio_file_id: int):
         logger.info(f"Background task started: efficiency analysis for audio_file_id={audio_file_id}")
 
         # 분석 실행
+        print(f"[DEBUG] Initializing EfficiencyAnalyzer for audio_file_id={audio_file_id}")
         analyzer = EfficiencyAnalyzer(audio_file_id, db)
+        print(f"[DEBUG] Starting analyze_all()")
         analysis = analyzer.analyze_all()
+        print(f"[DEBUG] analyze_all() completed")
+
+        # === 인사이트 생성 (한 번만!) ===
+        try:
+            # 엔트로피 인사이트
+            entropy_values = [v['entropy'] for v in analysis.entropy_values] if analysis.entropy_values else []
+            entropy_insight = generate_insight(
+                "엔트로피",
+                entropy_values,
+                analysis.entropy_avg,
+                analysis.entropy_std
+            )
+        except Exception as e:
+            logger.error(f"Failed to generate entropy insight: {e}")
+            entropy_insight = "분석 중 오류가 발생했습니다."
+
+        # 전체 회의 지표 인사이트
+        overall_ttr_insight = None
+        if analysis.overall_ttr:
+            ttr_vals = analysis.overall_ttr.get('ttr_values', [])
+            overall_ttr_insight = generate_insight(
+                "전체 회의 TTR",
+                ttr_vals,
+                analysis.overall_ttr.get('ttr_avg', 0),
+                analysis.overall_ttr.get('ttr_std', 0)
+            )
+
+        overall_info_insight = None
+        if analysis.overall_information_content:
+            info_score = analysis.overall_information_content.get('information_score', 0)
+            overall_info_insight = generate_insight(
+                "전체 회의 정보량",
+                [info_score] * 10,
+                info_score,
+                0
+            )
+
+        overall_sentence_prob_insight = None
+        if analysis.overall_sentence_probability:
+            outlier_ratio = analysis.overall_sentence_probability.get('outlier_ratio', 0)
+            avg_prob = analysis.overall_sentence_probability.get('avg_probability', 0)
+
+            if outlier_ratio >= 0.99:
+                overall_sentence_prob_insight = "영상의 길이가 짧아 통계적으로 유의미한 분석이 어렵습니다."
+            else:
+                overall_sentence_prob_insight = generate_insight(
+                    "전체 회의 문장 확률",
+                    [avg_prob, outlier_ratio],
+                    avg_prob,
+                    0
+                )
+
+        overall_ppl_insight = None
+        if analysis.overall_perplexity:
+            ppl_vals = [v['ppl'] for v in analysis.overall_perplexity.get('ppl_values', [])]
+            overall_ppl_insight = generate_insight(
+                "전체 회의 PPL",
+                ppl_vals,
+                analysis.overall_perplexity.get('ppl_avg', 0),
+                analysis.overall_perplexity.get('ppl_std', 0)
+            )
+
+        # 화자별 인사이트 생성 및 speaker_metrics에 추가
+        updated_speaker_metrics = []
+        for speaker in analysis.speaker_metrics:
+            speaker_data = speaker.copy()
+
+            # TTR 인사이트
+            if speaker.get('ttr') and speaker['ttr'].get('ttr_values'):
+                ttr_insight = generate_insight(
+                    f"{speaker.get('speaker_name', 'Unknown')}의 TTR",
+                    speaker['ttr']['ttr_values'],
+                    speaker['ttr']['ttr_avg'],
+                    speaker['ttr'].get('ttr_std')
+                )
+                speaker_data['ttr']['insight'] = ttr_insight
+
+            # 정보량 인사이트
+            if speaker.get('information_content'):
+                info_score = speaker['information_content'].get('information_score', 0)
+                info_insight = generate_insight(
+                    f"{speaker.get('speaker_name', 'Unknown')}의 정보량",
+                    [info_score] * 10,
+                    info_score,
+                    0
+                )
+                speaker_data['information_content']['insight'] = info_insight
+
+            # 문장 확률 인사이트
+            if speaker.get('sentence_probability'):
+                outlier_ratio = speaker['sentence_probability'].get('outlier_ratio', 0)
+                avg_prob = speaker['sentence_probability'].get('avg_probability', 0)
+
+                if outlier_ratio >= 0.99:
+                    sentence_insight = "영상의 길이가 짧아 통계적으로 유의미한 분석이 어렵습니다."
+                else:
+                    sentence_insight = generate_insight(
+                        f"{speaker.get('speaker_name', 'Unknown')}의 문장 확률",
+                        [avg_prob, outlier_ratio],
+                        avg_prob,
+                        0
+                    )
+                speaker_data['sentence_probability']['insight'] = sentence_insight
+
+            # PPL 인사이트
+            if speaker.get('perplexity') and speaker['perplexity'].get('ppl_values'):
+                ppl_vals = [v['ppl'] for v in speaker['perplexity']['ppl_values']]
+                ppl_insight = generate_insight(
+                    f"{speaker.get('speaker_name', 'Unknown')}의 PPL",
+                    ppl_vals,
+                    speaker['perplexity']['ppl_avg'],
+                    speaker['perplexity'].get('ppl_std')
+                )
+                speaker_data['perplexity']['insight'] = ppl_insight
+
+            updated_speaker_metrics.append(speaker_data)
 
         # 기존 분석 결과가 있으면 업데이트, 없으면 새로 생성
         existing = db.query(MeetingEfficiencyAnalysis).filter(
@@ -111,18 +243,34 @@ def run_efficiency_analysis(audio_file_id: int):
             existing.entropy_values = analysis.entropy_values
             existing.entropy_avg = analysis.entropy_avg
             existing.entropy_std = analysis.entropy_std
-            existing.speaker_metrics = analysis.speaker_metrics
+            existing.overall_ttr = analysis.overall_ttr
+            existing.overall_information_content = analysis.overall_information_content
+            existing.overall_sentence_probability = analysis.overall_sentence_probability
+            existing.overall_perplexity = analysis.overall_perplexity
+            existing.speaker_metrics = updated_speaker_metrics  # 인사이트 포함된 버전
             existing.total_speakers = analysis.total_speakers
             existing.total_turns = analysis.total_turns
             existing.total_sentences = analysis.total_sentences
             existing.analysis_version = "1.0"
             existing.analyzed_at = datetime.now(timezone.utc)
+            # 인사이트 저장
+            existing.entropy_insight = entropy_insight
+            existing.overall_ttr_insight = overall_ttr_insight
+            existing.overall_info_insight = overall_info_insight
+            existing.overall_sentence_prob_insight = overall_sentence_prob_insight
+            existing.overall_ppl_insight = overall_ppl_insight
             db.commit()
             db.refresh(existing)
             logger.info(f"Efficiency analysis updated for audio_file_id={audio_file_id}")
         else:
             logger.info(f"Creating new analysis for audio_file_id={audio_file_id}")
-            # 새로 생성
+            # 새로 생성 - 인사이트 포함
+            analysis.speaker_metrics = updated_speaker_metrics
+            analysis.entropy_insight = entropy_insight
+            analysis.overall_ttr_insight = overall_ttr_insight
+            analysis.overall_info_insight = overall_info_insight
+            analysis.overall_sentence_prob_insight = overall_sentence_prob_insight
+            analysis.overall_ppl_insight = overall_ppl_insight
             db.add(analysis)
             db.commit()
             db.refresh(analysis)
@@ -180,7 +328,8 @@ def trigger_efficiency_analysis(
         }
 
     # 백그라운드 작업 등록 (DB 세션은 태스크 내부에서 생성)
-    background_tasks.add_task(run_efficiency_analysis, audio_file.id)
+    # file_id (요청 파라미터)를 그대로 전달 - UUID 문자열 또는 integer 모두 지원
+    background_tasks.add_task(run_efficiency_analysis, file_id if not file_id.isdigit() else audio_file.id)
 
     return {
         "message": "Efficiency analysis started",
@@ -273,118 +422,15 @@ def get_efficiency_analysis(
             detail=f"Efficiency analysis not found for file {file_id}. Please trigger analysis first."
         )
 
-    # 엔트로피 인사이트 생성
-    entropy_values = [v['entropy'] for v in analysis.entropy_values] if analysis.entropy_values else []
-    entropy_insight = generate_insight(
-        "엔트로피",
-        entropy_values,
-        analysis.entropy_avg,
-        analysis.entropy_std
-    )
+    # === DB에서 인사이트 조회 (LLM 호출 제거!) ===
+    entropy_insight = analysis.entropy_insight or "분석 중입니다."
+    overall_ttr_insight = analysis.overall_ttr_insight
+    overall_info_insight = analysis.overall_info_insight
+    overall_sentence_prob_insight = analysis.overall_sentence_prob_insight
+    overall_ppl_insight = analysis.overall_ppl_insight
 
-    # 전체 회의 지표 인사이트 생성
-    overall_ttr_insight = None
-    if analysis.overall_ttr:
-        ttr_vals = analysis.overall_ttr.get('ttr_values', [])
-        overall_ttr_insight = generate_insight(
-            "전체 회의 TTR",
-            ttr_vals,
-            analysis.overall_ttr.get('ttr_avg', 0),
-            analysis.overall_ttr.get('ttr_std', 0)
-        )
-
-    overall_info_insight = None
-    if analysis.overall_information_content:
-        info_score = analysis.overall_information_content.get('information_score', 0)
-        overall_info_insight = generate_insight(
-            "전체 회의 정보량",
-            [info_score] * 10,
-            info_score,
-            0
-        )
-
-    overall_sentence_prob_insight = None
-    if analysis.overall_sentence_probability:
-        outlier_ratio = analysis.overall_sentence_probability.get('outlier_ratio', 0)
-        avg_prob = analysis.overall_sentence_probability.get('avg_probability', 0)
-
-        if outlier_ratio >= 0.99:
-            overall_sentence_prob_insight = "영상의 길이가 짧아 통계적으로 유의미한 분석이 어렵습니다."
-        else:
-            overall_sentence_prob_insight = generate_insight(
-                "전체 회의 문장 확률",
-                [avg_prob, outlier_ratio],
-                avg_prob,
-                0
-            )
-
-    overall_ppl_insight = None
-    if analysis.overall_perplexity:
-        ppl_vals = [v['ppl'] for v in analysis.overall_perplexity.get('ppl_values', [])]
-        overall_ppl_insight = generate_insight(
-            "전체 회의 PPL",
-            ppl_vals,
-            analysis.overall_perplexity.get('ppl_avg', 0),
-            analysis.overall_perplexity.get('ppl_std', 0)
-        )
-
-    # 화자별 인사이트 생성
-    speaker_metrics_with_insights = []
-    for speaker in analysis.speaker_metrics:
-        speaker_data = speaker.copy()
-
-        # TTR 인사이트
-        if speaker.get('ttr') and speaker['ttr'].get('ttr_values'):
-            ttr_insight = generate_insight(
-                f"{speaker.get('speaker_name', 'Unknown')}의 TTR",
-                speaker['ttr']['ttr_values'],
-                speaker['ttr']['ttr_avg'],
-                speaker['ttr'].get('ttr_std')
-            )
-            speaker_data['ttr']['insight'] = ttr_insight
-
-        # 정보량 인사이트
-        if speaker.get('information_content'):
-            info_score = speaker['information_content'].get('information_score', 0)
-            avg_similarity = speaker['information_content'].get('avg_similarity', 0)
-            # 정보량은 단일 값이므로 평균으로 처리
-            info_insight = generate_insight(
-                f"{speaker.get('speaker_name', 'Unknown')}의 정보량",
-                [info_score] * 10,  # 임시로 10개 복제
-                info_score,
-                0
-            )
-            speaker_data['information_content']['insight'] = info_insight
-
-        # 문장 확률 인사이트
-        if speaker.get('sentence_probability'):
-            outlier_ratio = speaker['sentence_probability'].get('outlier_ratio', 0)
-            avg_prob = speaker['sentence_probability'].get('avg_probability', 0)
-
-            # 이상치 비율이 1.0이면 영상이 짧다는 메시지
-            if outlier_ratio >= 0.99:
-                sentence_insight = "영상의 길이가 짧아 통계적으로 유의미한 분석이 어렵습니다."
-            else:
-                sentence_insight = generate_insight(
-                    f"{speaker.get('speaker_name', 'Unknown')}의 문장 확률",
-                    [avg_prob, outlier_ratio],
-                    avg_prob,
-                    0
-                )
-            speaker_data['sentence_probability']['insight'] = sentence_insight
-
-        # PPL 인사이트
-        if speaker.get('perplexity') and speaker['perplexity'].get('ppl_values'):
-            ppl_vals = [v['ppl'] for v in speaker['perplexity']['ppl_values']]
-            ppl_insight = generate_insight(
-                f"{speaker.get('speaker_name', 'Unknown')}의 PPL",
-                ppl_vals,
-                speaker['perplexity']['ppl_avg'],
-                speaker['perplexity'].get('ppl_std')
-            )
-            speaker_data['perplexity']['insight'] = ppl_insight
-
-        speaker_metrics_with_insights.append(speaker_data)
+    # 화자별 인사이트는 이미 speaker_metrics JSON에 포함되어 있음
+    speaker_metrics_with_insights = analysis.speaker_metrics
 
     # 전체 회의 지표에 인사이트 추가
     overall_ttr_data = None
