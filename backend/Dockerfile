@@ -2,6 +2,9 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# Python 출력 버퍼링 비활성화 (로그 즉시 출력)
+ENV PYTHONUNBUFFERED=1
+
 # 시스템 의존성 설치
 RUN apt-get update && apt-get install -y \
     gcc \
@@ -20,6 +23,8 @@ RUN apt-get update && apt-get install -y \
     libavfilter-dev \
     libswscale-dev \
     libswresample-dev \
+    libfreetype6-dev \
+    libjpeg-dev \
     git \
     curl \
     wget \
@@ -79,6 +84,17 @@ RUN echo "Creating CUDA library symlinks..." && \
 # 다운로드만 하고 로드는 하지 않음 (메모리 절약)
 RUN python3 -c "import whisper; import os; os.makedirs('/root/.cache/whisper', exist_ok=True); whisper._download(whisper._MODELS['large-v3'], '/root/.cache/whisper', False)"
 
+# Sentence Transformers 모델 미리 다운로드 (효율성 분석용)
+# 모델을 캐시에 다운로드하여 런타임 시 즉시 사용 가능
+RUN echo "Downloading sentence-transformers model..." && \
+    python3 -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2')" && \
+    echo "Sentence transformers model downloaded successfully"
+
+# GPT-2 모델 미리 다운로드 (Perplexity 계산용)
+RUN echo "Downloading GPT-2 model for perplexity calculation..." && \
+    python3 -c "from transformers import GPT2LMHeadModel, GPT2TokenizerFast; GPT2TokenizerFast.from_pretrained('skt/kogpt2-base-v2'); GPT2LMHeadModel.from_pretrained('skt/kogpt2-base-v2')" && \
+    echo "GPT-2 model downloaded successfully"
+
 # 애플리케이션 코드 복사
 COPY ./app ./app
 
@@ -89,6 +105,10 @@ COPY ./alembic.ini ./alembic.ini
 # Entrypoint 스크립트 복사 및 실행 권한 부여
 COPY ./entrypoint.sh ./entrypoint.sh
 RUN sed -i 's/\r$//' ./entrypoint.sh && chmod +x ./entrypoint.sh
+
+# 템플릿 생성 스크립트 복사 및 실행
+COPY ./create_template.py ./create_template.py
+RUN mkdir -p /app/templates && python3 create_template.py
 
 # 업로드 디렉토리 및 모델 캐시 디렉토리 생성
 RUN mkdir -p /app/uploads /app/temp /app/.cache

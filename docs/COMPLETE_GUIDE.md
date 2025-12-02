@@ -1442,6 +1442,434 @@ if not np.isnan(ppl) and not np.isinf(ppl):
 
 ---
 
+## 12. 핵심 구현 코드 예제
+
+### 12.1 Phase 1: 음성 처리 실제 구현
+
+#### VAD (Voice Activity Detection) - WebRTC
+```python
+SR = 16000              # 샘플링 레이트
+VAD_AGGR = 2            # VAD 민감도 (0~3, 높을수록 엄격)
+FRAME_MS = 20           # 프레임 크기 (ms)
+PAD_MS = 150            # VAD 패딩 (ms)
+
+def vad_keep_mask(audio_f32: np.ndarray, sr: int, frame_ms: int,
+                  vad_aggr: int, pad_ms: int):
+    """WebRTC VAD로 음성 구간 탐지"""
+    # Float → Int16 변환
+    x_i16 = float_to_int16(audio_f32)
+    vad = webrtcvad.Vad(vad_aggr)
+
+    # 프레임 단위 분할 (20ms)
+    frame_len = int(sr * frame_ms / 1000)
+    frame_iter = list(frame_bytes_from_int16(x_i16, sr, frame_ms))
+
+    # 각 프레임 음성 여부 판별
+    voiced = np.zeros(len(frame_iter), dtype=bool)
+    for i, (start, frame_bytes) in enumerate(frame_iter):
+        if vad.is_speech(frame_bytes, sr):
+            voiced[i] = True
+
+    # 패딩 추가 (음성 프레임 앞뒤에 150ms 추가)
+    keep = np.zeros_like(voiced)
+    pad_frames = pad_ms // frame_ms
+    for i, v in enumerate(voiced):
+        if v:
+            s = max(0, i - pad_frames)
+            e = min(len(voiced), i + pad_frames + 1)
+            keep[s:e] = True
+
+    return keep_samples
+```
+
+#### STT 병렬 처리 (OpenAI Whisper API)
+```python
+def transcribe_chunks_with_whisper(chunk_files: List[Path], srt_dir: Path,
+                                   openai_api_key: str) -> List[Path]:
+    """병렬 전사 (최대 4개 동시 실행)"""
+    srt_files_dict = {}
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        # 모든 청크를 병렬로 제출
+        future_to_chunk = {
+            executor.submit(transcribe_single_chunk, cp, srt_dir,
+                          openai_api_key, i + 1, len(chunk_files)): (i, cp)
+            for i, cp in enumerate(chunk_files)
+        }
+
+        # 완료된 순서대로 결과 수집
+        for future in as_completed(future_to_chunk):
+            idx, chunk_path = future_to_chunk[future]
+            srt_path = future.result()
+            srt_files_dict[idx] = srt_path
+
+    return [srt_files_dict[i] for i in sorted(srt_files_dict.keys())]
+```
+
+#### Diarization (Senko) - GPU 가속
+```python
+def run_diarization_senko(audio_path: Path, device: str = None) -> Dict:
+    """Senko를 사용한 화자 분리 (192차원 임베딩)"""
+    # Senko Diarizer 초기화
+    diarizer = senko.Diarizer(device=device, warmup=True, quiet=False)
+
+    # 화자 분리 실행
+    senko_result = diarizer.diarize(str(audio_path), generate_colors=False)
+
+    # 결과 변환 (numpy → list)
+    embeddings = {}
+    for speaker, centroid in senko_result['speaker_centroids'].items():
+        embeddings[speaker] = centroid.tolist()  # 192차원 리스트
+
+    return {"turns": turns, "embeddings": embeddings}
+```
+
+### 12.2 Phase 2: AI 분석 실제 구현
+
+#### NER - BERT + Levenshtein Clustering
+```python
+class NERService:
+    def __init__(self):
+        model_name = "seungkukim/korean-pii-masking"
+        self.model = AutoModelForTokenClassification.from_pretrained(model_name)
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.nlp = pipeline("ner", model=self.model, tokenizer=self.tokenizer,
+                           aggregation_strategy="simple")
+
+    def cluster_similar_names(self, detected_names: List[Dict]) -> Dict[str, List[str]]:
+        """유사 이름 그룹화 (Levenshtein Distance + Hierarchical Clustering)"""
+        from scipy.cluster.hierarchy import linkage, fcluster
+        from Levenshtein import distance as levenshtein_distance
+
+        unique_names = list(set([d["detected_name"] for d in detected_names]))
+
+        # 거리 행렬 계산
+        n = len(unique_names)
+        distance_matrix = np.zeros((n, n))
+        for i in range(n):
+            for j in range(i + 1, n):
+                dist = levenshtein_distance(unique_names[i], unique_names[j])
+                normalized_dist = dist / max(len(unique_names[i]), len(unique_names[j]))
+                distance_matrix[i, j] = normalized_dist
+                distance_matrix[j, i] = normalized_dist
+
+        # Hierarchical Clustering
+        condensed_dist = distance_matrix[np.triu_indices(n, k=1)]
+        Z = linkage(condensed_dist, method='average')
+        cluster_labels = fcluster(Z, t=0.3, criterion='distance')
+
+        # 대표 이름 선택
+        result = {}
+        for label in set(cluster_labels):
+            names = [unique_names[i] for i, l in enumerate(cluster_labels) if l == label]
+            representative = min(names, key=len)
+            result[representative] = names
+
+        return result
+```
+
+#### 닉네임 생성 - Smart Selection (70% 비용 절감)
+```python
+class NicknameService:
+    def smart_selection_utterances(self, utterances: List[Dict], max_total: int = 12):
+        """대표 발화 선택으로 LLM 호출 비용 70% 절감"""
+        selected = []
+
+        # 1. 긴 발화 우선 (20단어 이상)
+        long_utterances = [u for u in utterances if len(u.get("text", "").split()) > 20]
+        long_utterances.sort(key=lambda x: len(x["text"]), reverse=True)
+        selected.extend(long_utterances[:5])
+
+        # 2. 키워드 포함 발화
+        keywords = ["요약", "정리", "결론", "제안", "문제", "해결"]
+        keyword_utterances = [u for u in utterances
+                             if any(kw in u.get("text", "") for kw in keywords)]
+        selected.extend(keyword_utterances[:3])
+
+        # 3. 시간대별 샘플링 (초반/중반/후반)
+        if len(utterances) >= 3:
+            segment_size = len(utterances) // 3
+            selected.append(utterances[segment_size // 2])
+            selected.append(utterances[segment_size + segment_size // 2])
+            selected.append(utterances[-segment_size // 2])
+
+        return unique_selected[:max_total]
+
+    @traceable(name="generate_speaker_nickname", run_type="llm")
+    def generate_nickname_with_llm(self, speaker_label: str, selected_utterances: List[Dict]):
+        """GPT-4o-mini로 화자 닉네임 생성"""
+        prompt = f"""
+        당신은 전문 회의 분석가입니다.
+
+        아래는 화자 "{speaker_label}"의 대표 발화들입니다:
+        {chr(10).join([f"- {u['text']}" for u in selected_utterances])}
+
+        위 발화를 분석하여 다음을 JSON 형식으로 응답하세요:
+        {{
+          "display_label": "역할 (2-4단어)",
+          "one_liner": "특징 한줄 요약",
+          "keywords": ["키워드1", "키워드2"],
+          "communication_style": "의사소통 스타일"
+        }}
+        """
+
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            response_format={"type": "json_object"}
+        )
+
+        return json.loads(response.choices[0].message.content)
+```
+
+### 12.3 Phase 3: LangGraph Agent 실제 구현
+
+#### AgentState 정의
+```python
+from typing import TypedDict, List, Dict
+
+class AgentState(TypedDict):
+    # 입력
+    user_id: int
+    audio_file_id: int
+    stt_result: List[Dict]
+    diar_result: Dict
+    participant_names: List[str]
+
+    # 중간 데이터
+    previous_profiles: List[Dict]
+    auto_matched: Dict[str, str]
+    name_mentions: List[Dict]
+    speaker_utterances: Dict[str, List[str]]
+    mapping_history: List[Dict]
+
+    # 출력
+    final_mappings: Dict
+    needs_manual_review: List[str]
+```
+
+#### Tool 구현 - VoiceSimilarityTool (192차원)
+```python
+@tool
+async def calculate_voice_similarity(new_embedding: List[float],
+                                     stored_profiles: List[Dict]) -> Dict:
+    """음성 임베딩 코사인 유사도 계산 (192차원)"""
+    threshold = 0.85
+    new_emb = np.array(new_embedding)
+
+    best_match = None
+    best_similarity = 0.0
+
+    for profile in stored_profiles:
+        stored_emb = np.array(profile["voice_embedding"])
+        similarity = np.dot(new_emb, stored_emb) / (
+            np.linalg.norm(new_emb) * np.linalg.norm(stored_emb)
+        )
+
+        if similarity > best_similarity:
+            best_similarity = similarity
+            best_match = profile["name"]
+
+    return {
+        "matched_profile": best_match if best_similarity >= threshold else None,
+        "similarity": float(best_similarity),
+        "threshold_passed": best_similarity >= threshold
+    }
+```
+
+#### Node 구현 - name_based_tagging (멀티턴 LLM)
+```python
+async def name_based_tagging_node(state: AgentState) -> AgentState:
+    """이름 기반 화자 태깅 (멀티턴 LLM 추론)"""
+    name_mentions = state.get("name_mentions", [])
+    mapping_history = state.get("mapping_history", [])
+
+    llm = ChatOpenAI(model="gpt-5-mini-2025-08-07", temperature=1.0)
+    output_parser = PydanticOutputParser(pydantic_object=SpeakerMappingResult)
+
+    for turn_num, mention in enumerate(name_mentions, 1):
+        # 프롬프트 생성 (이전 분석 요약 포함)
+        system_message, user_message = create_name_based_prompt(
+            name=mention["name"],
+            context_before=mention["context_before"],
+            context_after=mention["context_after"],
+            participant_names=state["participant_names"],
+            mapping_history=mapping_history,
+            turn_num=turn_num
+        )
+
+        # LLM 호출
+        response = llm.invoke([
+            {"role": "system", "content": system_message},
+            {"role": "user", "content": user_message}
+        ])
+
+        result_obj = output_parser.parse(response.content)
+        mapping_history.append(result_obj)
+
+    state["mapping_history"] = mapping_history
+    return state
+```
+
+#### Node 구현 - merge_results (소거법)
+```python
+async def merge_results_node(state: AgentState) -> AgentState:
+    """결과 통합 및 소거법 적용"""
+    final_mappings = {}
+
+    # 1. 자동 매칭된 화자는 그대로 사용
+    for speaker_label, name in state.get("auto_matched", {}).items():
+        final_mappings[speaker_label] = {
+            "name": name,
+            "confidence": 1.0,
+            "match_method": "embedding"
+        }
+
+    # 2. name_based_results 집계
+    # 3. 중복 제거 (같은 이름 → 높은 신뢰도 선택)
+    # 4. 소거법: 남은 화자 = 남은 이름이 1:1일 때 자동 매핑
+    unmatched_speakers = all_speakers - set(final_mappings.keys())
+    used_names = {m["name"] for m in final_mappings.values()}
+    unused_names = set(participant_names) - used_names
+
+    if len(unmatched_speakers) == len(unused_names) == 1:
+        speaker = list(unmatched_speakers)[0]
+        name = list(unused_names)[0]
+        final_mappings[speaker] = {
+            "name": name,
+            "confidence": 0.50,
+            "match_method": "소거법",
+            "needs_review": True
+        }
+
+    state["final_mappings"] = final_mappings
+    return state
+```
+
+### 12.4 Phase 4: 응용 분석 실제 구현
+
+#### 효율성 분석 - TTR (Type-Token Ratio)
+```python
+def _calc_ttr(self, speaker: SpeakerMapping) -> Dict[str, Any]:
+    """TTR 계산 (Mecab 형태소 분석)"""
+    mecab = get_mecab()
+    texts = [t.text for t in speaker_transcripts]
+    all_text = " ".join(texts)
+
+    # 형태소 분석 (명사, 동사, 형용사만 추출)
+    morphs = mecab.pos(all_text)
+    content_words = [word for word, pos in morphs
+                    if pos.startswith('NN') or pos.startswith('VV') or pos.startswith('VA')]
+
+    # 슬라이딩 윈도우 TTR 계산
+    window_size = min(50, len(content_words) // 2)
+    ttr_values = []
+
+    for i in range(0, len(content_words) - window_size + 1, 10):
+        window_words = content_words[i:i + window_size]
+        ttr = len(set(window_words)) / len(window_words)
+        ttr_values.append({"ttr": float(ttr)})
+
+    return {
+        "ttr_avg": float(np.mean([v["ttr"] for v in ttr_values])),
+        "ttr_std": float(np.std([v["ttr"] for v in ttr_values]))
+    }
+```
+
+#### 효율성 분석 - Perplexity (KoGPT-2)
+```python
+def _calc_perplexity(self, speaker: SpeakerMapping) -> Dict[str, Any]:
+    """PPL 계산 (조건부 Perplexity)"""
+    model, tokenizer = get_gpt2_model()  # KoGPT-2
+    device = next(model.parameters()).device
+
+    ppl_values = []
+    for i in range(1, len(speaker_transcripts)):
+        # 슬라이딩 윈도우: 이전 문장들 → 현재 문장 PPL
+        context_text = " ".join([t.text for t in speaker_transcripts[:i]])
+        target_text = speaker_transcripts[i].text
+
+        full_text = context_text + " " + target_text
+        encodings = tokenizer(full_text, return_tensors="pt")
+        input_ids = encodings["input_ids"].to(device)
+
+        with torch.no_grad():
+            outputs = model(input_ids, labels=input_ids)
+            loss = outputs.loss.item()
+
+        ppl = np.exp(loss)
+        ppl_values.append({"ppl": float(ppl), "loss": float(loss)})
+
+    return {
+        "ppl_avg": float(np.mean([v["ppl"] for v in ppl_values])),
+        "ppl_std": float(np.std([v["ppl"] for v in ppl_values]))
+    }
+```
+
+#### RAG 시스템 - ChromaDB 초기화
+```python
+class RAGService:
+    def store_transcript(self, file_id: str, final_transcript: List[Dict]):
+        """회의록을 ChromaDB에 저장"""
+        collection_name = f"meeting_{file_id}"
+
+        # Document 객체 생성
+        documents = []
+        for idx, segment in enumerate(final_transcript):
+            doc = Document(
+                page_content=segment["text"],
+                metadata={
+                    "speaker_name": segment["speaker_name"],
+                    "start_time": segment["start_time"],
+                    "end_time": segment["end_time"],
+                    "segment_index": idx
+                }
+            )
+            documents.append(doc)
+
+        # ChromaDB에 저장 (OpenAI text-embedding-ada-002)
+        vectorstore = Chroma.from_documents(
+            documents=documents,
+            embedding=OpenAIEmbeddings(),
+            collection_name=collection_name,
+            persist_directory="./chroma_db"
+        )
+
+        return vectorstore
+```
+
+#### RAG 시스템 - 질문 분석 (화자 자동 추출)
+```python
+def analyze_question(self, question: str, available_speakers: List[str]):
+    """질문에서 화자 이름 자동 추출 (LLM 기반)"""
+    analysis_prompt = f"""
+    질문: {question}
+    사용 가능한 발언자 목록: {', '.join(available_speakers)}
+
+    이 질문이 특정 발언자에 관한 것인가요?
+    발언자: [이름 또는 '없음']
+    """
+
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": analysis_prompt}]
+    )
+
+    # 유사도 기반 매칭
+    for line in response.choices[0].message.content.split("\n"):
+        if line.startswith("발언자:"):
+            speaker_name = line.split(":")[1].strip()
+            if speaker_name != "없음":
+                matched_speaker = self.find_most_similar_speaker(
+                    speaker_name, available_speakers
+                )
+                return {"detected_speaker": matched_speaker}
+
+    return {"detected_speaker": None}
+```
+
+---
+
 ## 📝 부록
 
 ### A. 핵심 알고리즘
@@ -1576,6 +2004,6 @@ def apply_elimination(unmatched_speakers, remaining_names, utterances):
 
 ---
 
-**Last Updated**: 2025-11-27
+**Last Updated**: 2025-12-01
 **작성자**: Claude Code
-**버전**: 1.0
+**버전**: 1.1 (실제 구현 코드 추가)

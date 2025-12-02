@@ -22,7 +22,7 @@ class NERService:
     def __init__(
         self,
         model_name: str = "seungkukim/korean-pii-masking",
-        ner_threshold: float = 0.8,
+        ner_threshold: float = 0.6,
         cluster_threshold: float = 1.5
     ):
         """

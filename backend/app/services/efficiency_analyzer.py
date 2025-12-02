@@ -21,6 +21,8 @@ import hdbscan
 import torch
 from transformers import GPT2LMHeadModel, GPT2TokenizerFast
 from konlpy.tag import Mecab
+import openai
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -160,6 +162,7 @@ class EfficiencyAnalyzer:
             MeetingEfficiencyAnalysis: DB 저장용 객체
         """
         logger.info(f"Starting efficiency analysis for audio_file_id={self.audio_file_id}")
+        print(f"🚀 [Efficiency] Starting analysis for file {self.audio_file_id}")
         print(f"[DEBUG] EfficiencyAnalyzer.analyze_all started for {self.audio_file_id}")
 
         # 화자별 지표 계산
@@ -181,15 +184,25 @@ class EfficiencyAnalyzer:
             }
             speaker_metrics.append(metrics)
 
-        # 전체 회의 엔트로피
-        entropy_data = self._calc_entropy()
-
         # 전체 회의 지표 계산
-        logger.info("Calculating overall meeting metrics...")
+        print("[DEBUG] Calculating overall metrics...")
+        entropy_data = self._calc_entropy()
         overall_ttr = self._calc_overall_ttr()
-        overall_info_content = self._calc_overall_information_content()
-        overall_sentence_prob = self._calc_overall_sentence_probability()
+        overall_info = self._calc_overall_information_content()
+        overall_sent_prob = self._calc_overall_sentence_probability()
         overall_ppl = self._calc_overall_perplexity()
+
+        # 8. Interaction Network
+        interaction_network = self._calc_interaction_network()
+
+        # 9. Qualitative Evaluation (LLM)
+        qualitative_eval = self._generate_qualitative_evaluation(
+            speaker_metrics=speaker_metrics,
+            ttr=overall_ttr,
+            info=overall_info,
+            sent_prob=overall_sent_prob,
+            ppl=overall_ppl
+        )
 
         # DB 저장 객체 생성
         from datetime import datetime, timezone
@@ -200,9 +213,15 @@ class EfficiencyAnalyzer:
             entropy_std=entropy_data["std"],
             speaker_metrics=speaker_metrics,
             overall_ttr=overall_ttr,
-            overall_information_content=overall_info_content,
-            overall_sentence_probability=overall_sentence_prob,
+            overall_information_content=overall_info,
+            overall_sentence_probability=overall_sent_prob,
             overall_perplexity=overall_ppl,
+            
+            # New metrics
+            silence_analysis=self._calc_silence_analysis(),
+            interaction_analysis=interaction_network,
+            qualitative_analysis=qualitative_eval,
+
             total_speakers=len(self.speaker_mappings),
             total_turns=self._count_total_turns(),
             total_sentences=len(self.final_transcripts),
@@ -211,6 +230,7 @@ class EfficiencyAnalyzer:
         )
 
         logger.info(f"Efficiency analysis completed for audio_file_id={self.audio_file_id}")
+        print(f"✅ [Efficiency] Analysis completed for file {self.audio_file_id}")
         return analysis
 
     def _count_total_turns(self) -> int:
@@ -409,6 +429,7 @@ class EfficiencyAnalyzer:
             }
         except Exception as e:
             logger.error(f"Error calculating information content: {e}", exc_info=True)
+            print(f"❌ [Efficiency] Error calculating information content: {e}")
             return {
                 "cosine_similarity_values": [],
                 "avg_similarity": 0.0,
@@ -488,6 +509,7 @@ class EfficiencyAnalyzer:
             }
         except Exception as e:
             logger.error(f"Error calculating sentence probability: {e}", exc_info=True)
+            print(f"❌ [Efficiency] Error calculating sentence probability: {e}")
             return {
                 "avg_probability": 0.0,
                 "outlier_ratio": 0.0,
@@ -499,24 +521,9 @@ class EfficiencyAnalyzer:
         """
         PPL 계산 (ver1.ipynb Cell 36: calculate_conditional_ppl)
 
-        조건부 Perplexity 계산 (슬라이딩 윈도우)
-        GPT2 모델을 사용하여 실제 perplexity 계산
+        GPT-2 기반 조건부 Perplexity 계산
         """
-        # 화자별 발화 텍스트 추출
-        speaker_transcripts = [
-            t for t in self.final_transcripts
-            if t.speaker_name == (speaker.final_name or speaker.speaker_label)
-        ]
-
-        if len(speaker_transcripts) < 2:
-            return {
-                "ppl_values": [],
-                "ppl_avg": 0.0,
-                "ppl_std": 0.0
-            }
-
         try:
-            # GPT2 모델 로드
             model, tokenizer = get_gpt2_model()
             if model is None or tokenizer is None:
                 logger.warning("GPT2 model not available, skipping PPL calculation")
@@ -525,57 +532,75 @@ class EfficiencyAnalyzer:
                     "ppl_avg": 0.0,
                     "ppl_std": 0.0
                 }
-            device = next(model.parameters()).device
+
+            # 화자 발화 수집
+            speaker_transcripts = [
+                t for t in self.final_transcripts
+                if t.speaker_name == speaker.speaker_name
+            ]
+
+            if len(speaker_transcripts) < 3:  # 최소 3개 문장 필요
+                return {
+                    "ppl_values": [],
+                    "ppl_avg": 0.0,
+                    "ppl_std": 0.0
+                }
+
+            # 발화 순서대로 정렬
+            sorted_transcripts = sorted(speaker_transcripts, key=lambda x: x.start_time)
 
             ppl_values = []
-            max_windows = min(len(speaker_transcripts), 50)  # 최대 50개 윈도우
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-            for i in range(1, max_windows):
-                # 슬라이딩 윈도우: 이전 문장들을 컨텍스트로, 현재 문장의 PPL 계산
-                context_text = " ".join([t.text for t in speaker_transcripts[:i]])
-                target_text = speaker_transcripts[i].text
+            # 각 문장에 대해 이전 문장들을 컨텍스트로 사용하여 PPL 계산
+            for i in range(1, len(sorted_transcripts)):
+                # 이전 문장들을 컨텍스트로 사용 (최대 5개)
+                context_start = max(0, i - 5)
+                context_texts = [t.text for t in sorted_transcripts[context_start:i]]
+                target_text = sorted_transcripts[i].text
 
-                # 전체 텍스트 토크나이징
-                full_text = context_text + " " + target_text
-                encodings = tokenizer(full_text, return_tensors="pt")
-                input_ids = encodings["input_ids"].to(device)
+                # 컨텍스트 + 타겟 결합
+                full_text = " ".join(context_texts + [target_text])
 
-                # 컨텍스트 길이
-                context_ids = tokenizer(context_text, return_tensors="pt")["input_ids"]
-                context_length = context_ids.size(1)
+                try:
+                    # 토크나이징
+                    encodings = tokenizer(full_text, return_tensors='pt', truncation=True, max_length=512)
+                    input_ids = encodings['input_ids'].to(device)
 
-                # 모델 forward pass
-                with torch.no_grad():
-                    outputs = model(input_ids, labels=input_ids)
-                    loss = outputs.loss.item()
+                    # 모델 forward
+                    with torch.no_grad():
+                        outputs = model(input_ids, labels=input_ids)
+                        loss = outputs.loss
 
-                # Perplexity 계산: PPL = exp(loss)
-                ppl = np.exp(loss)
+                    # Perplexity = exp(loss)
+                    ppl = torch.exp(loss).item()
 
-                ppl_values.append({
-                    "window_start": i - 1,
-                    "window_end": i,
-                    "ppl": float(ppl),
-                    "loss": float(loss),
-                    "context_length": int(context_length),
-                    "target_length": int(input_ids.size(1) - context_length)
-                })
+                    # 이상치 제거 (1000 이상은 너무 높음)
+                    if ppl < 1000:
+                        ppl_values.append(ppl)
 
-            ppl_scores = [v["ppl"] for v in ppl_values]
-            ppl_avg = float(np.mean(ppl_scores)) if ppl_scores else 0.0
-            ppl_std = float(np.std(ppl_scores)) if ppl_scores else 0.0
+                except Exception as e:
+                    logger.warning(f"Error calculating PPL for sentence {i}: {e}")
+                    continue
 
-            logger.info(f"PPL calculation completed: avg={ppl_avg:.2f}, std={ppl_std:.2f}")
+            if not ppl_values:
+                return {
+                    "ppl_values": [],
+                    "ppl_avg": 0.0,
+                    "ppl_std": 0.0
+                }
+
+            ppl_avg = float(np.mean(ppl_values))
+            ppl_std = float(np.std(ppl_values))
 
             return {
-                "ppl_values": ppl_values,
+                "ppl_values": ppl_values[:50],  # 최대 50개만 저장
                 "ppl_avg": ppl_avg,
                 "ppl_std": ppl_std
             }
 
         except Exception as e:
-            logger.error(f"Failed to calculate PPL: {e}", exc_info=True)
-            # Fallback: 계산 실패시 빈 결과 반환
+            logger.error(f"Error calculating perplexity: {e}", exc_info=True)
             return {
                 "ppl_values": [],
                 "ppl_avg": 0.0,
@@ -737,7 +762,7 @@ class EfficiencyAnalyzer:
 
             # 모든 문장 임베딩
             sentences = [t.text for t in self.final_transcripts if t.text]
-            if len(sentences) < 10:
+            if len(sentences) < 5:  # 최소 5개 문장 필요 (10에서 5로 완화)
                 return {
                     "avg_probability": 0.0,
                     "outlier_ratio": 1.0,
@@ -769,66 +794,216 @@ class EfficiencyAnalyzer:
     def _calc_overall_perplexity(self) -> Dict[str, Any]:
         """전체 회의 Perplexity (PPL) 계산"""
         try:
-            gpt2_model, gpt2_tokenizer = get_gpt2_model()
-            if gpt2_model is None or gpt2_tokenizer is None:
+            model, tokenizer = get_gpt2_model()
+            if model is None or tokenizer is None:
+                logger.warning("GPT2 model not available, skipping overall PPL calculation")
                 return None
-            device = "cuda" if torch.cuda.is_available() else "cpu"
 
             # 모든 문장 수집
             sentences = [t.text for t in self.final_transcripts if t.text]
-            if not sentences:
+            if len(sentences) < 5:  # 최소 5개 문장 필요
                 return None
 
-            # 윈도우 단위로 PPL 계산
-            window_size = 10
-            ppl_values = []
+            # 발화 순서대로 정렬
+            sorted_transcripts = sorted(self.final_transcripts, key=lambda x: x.start_time)
 
-            for i in range(0, len(sentences), window_size):
-                window_sentences = sentences[i:i + window_size]
-                combined_text = " ".join(window_sentences)
+            ppl_values = []
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+            # 각 문장에 대해 이전 문장들을 컨텍스트로 사용하여 PPL 계산
+            for i in range(1, min(len(sorted_transcripts), 100)):  # 최대 100개 문장만 계산 (메모리 절약)
+                # 이전 문장들을 컨텍스트로 사용 (최대 3개)
+                context_start = max(0, i - 3)
+                context_texts = [t.text for t in sorted_transcripts[context_start:i]]
+                target_text = sorted_transcripts[i].text
+
+                # 컨텍스트 + 타겟 결합
+                full_text = " ".join(context_texts + [target_text])
 
                 try:
-                    encodings = gpt2_tokenizer(combined_text, return_tensors="pt")
-                    input_ids = encodings.input_ids.to(device)
+                    # 토크나이징
+                    encodings = tokenizer(full_text, return_tensors='pt', truncation=True, max_length=256)
+                    input_ids = encodings['input_ids'].to(device)
 
-                    if input_ids.size(1) > 1024:
-                        input_ids = input_ids[:, :1024]
-
+                    # 모델 forward
                     with torch.no_grad():
-                        outputs = gpt2_model(input_ids, labels=input_ids)
+                        outputs = model(input_ids, labels=input_ids)
                         loss = outputs.loss
-                        ppl = torch.exp(loss).item()
 
-                    # NaN, Infinity 체크
-                    if not np.isnan(ppl) and not np.isinf(ppl):
-                        ppl_values.append({
-                            "window_index": i // window_size,
-                            "ppl": float(ppl)
-                        })
+                    # Perplexity = exp(loss)
+                    ppl = torch.exp(loss).item()
+
+                    # 이상치 제거 (1000 이상은 너무 높음)
+                    if ppl < 1000:
+                        ppl_values.append(ppl)
+
                 except Exception as e:
-                    logger.warning(f"Error calculating PPL for window {i}: {e}")
+                    logger.warning(f"Error calculating overall PPL for sentence {i}: {e}")
                     continue
 
             if not ppl_values:
                 return None
 
-            # 통계
-            ppl_scores = [v["ppl"] for v in ppl_values]
-            ppl_avg = float(np.mean(ppl_scores)) if ppl_scores else 0.0
-            ppl_std = float(np.std(ppl_scores)) if ppl_scores else 0.0
-
-            # NaN 체크
-            if np.isnan(ppl_avg) or np.isinf(ppl_avg):
-                ppl_avg = 0.0
-            if np.isnan(ppl_std) or np.isinf(ppl_std):
-                ppl_std = 0.0
+            ppl_avg = float(np.mean(ppl_values))
+            ppl_std = float(np.std(ppl_values))
 
             return {
                 "ppl_avg": ppl_avg,
                 "ppl_std": ppl_std,
-                "ppl_values": ppl_values[:100],  # 최대 100개
-                "total_windows": len(ppl_values)
+                "sample_count": len(ppl_values)
+            }
+
+        except Exception as e:
+            logger.error(f"Error calculating overall perplexity: {e}", exc_info=True)
+            return None
+
+    def _calc_silence_analysis(self) -> Dict[str, Any]:
+        """
+        침묵 시간 분석 (VER3.ipynb Logic)
+        """
+        try:
+            segments = sorted(self.diarization_results, key=lambda x: x.start_time)
+            gaps = []
+            
+            for i in range(len(segments) - 1):
+                current_end = segments[i].end_time
+                next_start = segments[i + 1].start_time
+                gap_duration = next_start - current_end
+                
+                if gap_duration > 0.5: # 0.5초 이상만 침묵으로 간주
+                    gaps.append({
+                        "start_time": float(current_end),
+                        "duration": float(gap_duration),
+                        "prev_speaker": segments[i].speaker_label,
+                        "next_speaker": segments[i+1].speaker_label
+                    })
+            
+            if not gaps:
+                return {
+                    "stats": {"total_silence": 0, "mean_silence": 0, "count": 0},
+                    "gaps": []
+                }
+                
+            gap_durations = [g['duration'] for g in gaps]
+            stats = {
+                "total_silence": float(sum(gap_durations)),
+                "mean_silence": float(np.mean(gap_durations)),
+                "median_silence": float(np.median(gap_durations)),
+                "max_silence": float(max(gap_durations)),
+                "min_silence": float(min(gap_durations)),
+                "std_silence": float(np.std(gap_durations)),
+                "count": len(gaps)
+            }
+            
+            return {
+                "stats": stats,
+                "gaps": gaps[:100] # Limit size
             }
         except Exception as e:
-            logger.error(f"Error calculating overall perplexity: {e}")
+            logger.error(f"Error calculating silence analysis: {e}")
             return None
+
+    def _calc_interaction_network(self) -> Dict[str, Any]:
+        """
+        화자 간 상호작용 네트워크 분석 (Interaction Graph)
+        Nodes: 화자
+        Edges: 발화 전환 (Turn-taking) 빈도
+        """
+        try:
+            if not self.final_transcripts:
+                return None
+
+            # 1. Nodes (Speakers)
+            # FinalTranscript has speaker_name, not speaker_label
+            # Get unique speakers
+            speaker_names = list(set(t.speaker_name for t in self.final_transcripts if t.speaker_name))
+            nodes = [{"id": name, "label": name} for name in speaker_names]
+
+            # 2. Edges (Transitions)
+            transitions = defaultdict(int)
+            sorted_transcripts = sorted(self.final_transcripts, key=lambda x: x.start_time)
+
+            for i in range(len(sorted_transcripts) - 1):
+                current_speaker = sorted_transcripts[i].speaker_name
+                next_speaker = sorted_transcripts[i+1].speaker_name
+
+                if current_speaker != next_speaker:
+                    transitions[(current_speaker, next_speaker)] += 1
+
+            links = []
+            for (source, target), count in transitions.items():
+                links.append({
+                    "source": source,
+                    "target": target,
+                    "value": count
+                })
+
+            return {
+                "nodes": nodes,
+                "links": links
+            }
+
+        except Exception as e:
+            logger.error(f"Error calculating interaction network: {e}", exc_info=True)
+            return None
+
+    def _generate_qualitative_evaluation(self, speaker_metrics, ttr, info, sent_prob, ppl) -> str:
+        """
+        LLM 기반 정성적 평가 (VER2.ipynb Logic)
+        """
+        try:
+            client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+            
+            # Prepare data summary for LLM
+            transcript_preview = " ".join([t.text for t in self.final_transcripts[:50]]) + "..." # First 50 segments
+            
+            metrics_summary = {
+                "speakers": [s['speaker_name'] for s in speaker_metrics],
+                "turn_counts": {s['speaker_name']: s['turn_frequency']['turn_count'] for s in speaker_metrics},
+                "avg_ttr": ttr['ttr_avg'] if ttr else 0,
+                "avg_info": info['information_score'] if info else 0,
+                "avg_ppl": ppl['ppl_avg'] if ppl else 0
+            }
+            
+            prompt = f"""
+            당신은 기업 컨설팅 전문가입니다. 다음 회의 데이터를 바탕으로 회의 효율성을 평가해주세요.
+            
+            [회의 개요]
+            - 화자 수: {len(metrics_summary['speakers'])}명
+            - 화자 목록: {", ".join(metrics_summary['speakers'])}
+            - 발화 빈도: {metrics_summary['turn_counts']}
+            - 어휘 다양성(TTR): {metrics_summary['avg_ttr']:.3f} (높을수록 다양)
+            - 정보 밀도: {metrics_summary['avg_info']:.3f} (높을수록 정보량 많음)
+            - 대화 난이도(PPL): {metrics_summary['avg_ppl']:.2f} (낮을수록 평이)
+            
+            [회의 초반 내용 (참고용)]
+            {transcript_preview}
+            
+            [평가 항목]
+            1. 목적 명확성: 회의 목적이 뚜렷하고 공유되었는가?
+            2. 문제 해결 중심: 논의가 생산적인가?
+            3. 시간 효율성: 밀도 있게 진행되었는가?
+            4. 참여 균형성: 특정인의 독점 없이 고르게 참여했는가?
+            5. 결론 명확성: 실행 가능한 결론이 도출되었는가?
+            
+            각 항목별로 점수(10점 만점)와 짧은 평, 그리고 개선점을 작성해주세요.
+            마지막에 종합 점수와 총평을 요약해주세요.
+            """
+            
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "당신은 회의 분석 전문가입니다."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.3,
+                max_tokens=1500
+            )
+            
+            return response.choices[0].message.content
+            
+        except Exception as e:
+            logger.error(f"Error generating qualitative evaluation: {e}")
+            return "평가 생성 실패"
+
+

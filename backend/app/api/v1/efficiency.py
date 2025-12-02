@@ -11,6 +11,7 @@ from typing import List, Optional
 import logging
 import os
 from openai import OpenAI
+from langsmith import traceable
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,7 @@ router = APIRouter()
 openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
+@traceable(name="generate_efficiency_insight", run_type="llm")
 def generate_insight(metric_name: str, values: List[float], avg: float, std: float = None) -> str:
     """
     LLM을 사용하여 지표에 대한 한줄 평 생성
@@ -97,24 +99,26 @@ def generate_insight(metric_name: str, values: List[float], avg: float, std: flo
         return f"{metric_name} 분석이 완료되었습니다."
 
 
+# 전역 변수로 분석 중인 파일 추적 (간단한 인메모리 락)
+processing_files = set()
+
 def run_efficiency_analysis(audio_file_id: str):
     """백그라운드 작업: 효율성 분석 실행"""
-    print(f"[DEBUG] run_efficiency_analysis called with audio_file_id={audio_file_id}")
+    print(f"[DEBUG] run_efficiency_analysis called with audio_file_id={audio_file_id}", flush=True)
+    
     # 백그라운드 태스크에서는 새로운 DB 세션 생성 필요
     from app.db.base import SessionLocal
 
-    print(f"[DEBUG] SessionLocal imported successfully")
     db = SessionLocal()
-    print(f"[DEBUG] DB session created successfully")
     try:
         logger.info(f"Background task started: efficiency analysis for audio_file_id={audio_file_id}")
 
         # 분석 실행
-        print(f"[DEBUG] Initializing EfficiencyAnalyzer for audio_file_id={audio_file_id}")
+        print(f"[DEBUG] Initializing EfficiencyAnalyzer for audio_file_id={audio_file_id}", flush=True)
         analyzer = EfficiencyAnalyzer(audio_file_id, db)
-        print(f"[DEBUG] Starting analyze_all()")
+        print(f"[DEBUG] Starting analyze_all()", flush=True)
         analysis = analyzer.analyze_all()
-        print(f"[DEBUG] analyze_all() completed")
+        print(f"[DEBUG] analyze_all() completed. Result: {analysis}", flush=True)
 
         # === 인사이트 생성 (한 번만!) ===
         try:
@@ -168,7 +172,11 @@ def run_efficiency_analysis(audio_file_id: str):
 
         overall_ppl_insight = None
         if analysis.overall_perplexity:
-            ppl_vals = [v['ppl'] for v in analysis.overall_perplexity.get('ppl_values', [])]
+            # overall_perplexity['ppl_values'] is a list of scalars (floats), not dicts
+            ppl_vals = analysis.overall_perplexity.get('ppl_values', [])
+            # Ensure they are standard floats
+            ppl_vals = [float(v) for v in ppl_vals]
+            
             overall_ppl_insight = generate_insight(
                 "전체 회의 PPL",
                 ppl_vals,
@@ -231,6 +239,43 @@ def run_efficiency_analysis(audio_file_id: str):
 
             updated_speaker_metrics.append(speaker_data)
 
+        # 계산된 인사이트를 analysis 객체에 할당
+        analysis.entropy_insight = entropy_insight
+        analysis.overall_ttr_insight = overall_ttr_insight
+        analysis.overall_info_insight = overall_info_insight
+        analysis.overall_sentence_prob_insight = overall_sentence_prob_insight
+        analysis.overall_ppl_insight = overall_ppl_insight
+        analysis.speaker_metrics = updated_speaker_metrics
+
+        print(f"[DEBUG] Insights assigned to analysis object", flush=True)
+
+        # DB 업데이트/생성 로직 함수화
+        def update_analysis_fields(target, source):
+            target.entropy_values = source.entropy_values
+            target.entropy_avg = source.entropy_avg
+            target.entropy_std = source.entropy_std
+            target.overall_ttr = source.overall_ttr
+            target.overall_information_content = source.overall_information_content
+            target.overall_sentence_probability = source.overall_sentence_probability
+            target.overall_perplexity = source.overall_perplexity
+            target.speaker_metrics = source.speaker_metrics
+            target.total_speakers = source.total_speakers
+            target.total_turns = source.total_turns
+            target.total_sentences = source.total_sentences
+            target.analysis_version = "1.0"
+            target.analyzed_at = datetime.now(timezone.utc)
+            target.entropy_insight = source.entropy_insight
+            target.overall_ttr_insight = source.overall_ttr_insight
+            target.overall_info_insight = source.overall_info_insight
+            target.overall_sentence_prob_insight = source.overall_sentence_prob_insight
+            target.overall_ppl_insight = source.overall_ppl_insight
+            target.qualitative_analysis = source.qualitative_analysis
+            target.silence_analysis = source.silence_analysis
+            target.interaction_analysis = source.interaction_analysis
+
+        from sqlalchemy.exc import IntegrityError
+        from datetime import datetime, timezone
+
         # 기존 분석 결과가 있으면 업데이트, 없으면 새로 생성
         existing = db.query(MeetingEfficiencyAnalysis).filter(
             MeetingEfficiencyAnalysis.audio_file_id == audio_file_id
@@ -238,49 +283,52 @@ def run_efficiency_analysis(audio_file_id: str):
 
         if existing:
             logger.info(f"Updating existing analysis for audio_file_id={audio_file_id}")
-            # 기존 레코드 업데이트
-            from datetime import datetime, timezone
-            existing.entropy_values = analysis.entropy_values
-            existing.entropy_avg = analysis.entropy_avg
-            existing.entropy_std = analysis.entropy_std
-            existing.overall_ttr = analysis.overall_ttr
-            existing.overall_information_content = analysis.overall_information_content
-            existing.overall_sentence_probability = analysis.overall_sentence_probability
-            existing.overall_perplexity = analysis.overall_perplexity
-            existing.speaker_metrics = updated_speaker_metrics  # 인사이트 포함된 버전
-            existing.total_speakers = analysis.total_speakers
-            existing.total_turns = analysis.total_turns
-            existing.total_sentences = analysis.total_sentences
-            existing.analysis_version = "1.0"
-            existing.analyzed_at = datetime.now(timezone.utc)
-            # 인사이트 저장
-            existing.entropy_insight = entropy_insight
-            existing.overall_ttr_insight = overall_ttr_insight
-            existing.overall_info_insight = overall_info_insight
-            existing.overall_sentence_prob_insight = overall_sentence_prob_insight
-            existing.overall_ppl_insight = overall_ppl_insight
+            print(f"[DEBUG] Updating existing analysis for ID {audio_file_id}", flush=True)
+            update_analysis_fields(existing, analysis)
             db.commit()
             db.refresh(existing)
             logger.info(f"Efficiency analysis updated for audio_file_id={audio_file_id}")
+            print(f"[DEBUG] DB Commit successful (update)", flush=True)
         else:
             logger.info(f"Creating new analysis for audio_file_id={audio_file_id}")
-            # 새로 생성 - 인사이트 포함
-            analysis.speaker_metrics = updated_speaker_metrics
-            analysis.entropy_insight = entropy_insight
-            analysis.overall_ttr_insight = overall_ttr_insight
-            analysis.overall_info_insight = overall_info_insight
-            analysis.overall_sentence_prob_insight = overall_sentence_prob_insight
-            analysis.overall_ppl_insight = overall_ppl_insight
-            db.add(analysis)
-            db.commit()
-            db.refresh(analysis)
-            logger.info(f"Efficiency analysis created for audio_file_id={audio_file_id}")
+            print(f"[DEBUG] Creating new analysis for ID {audio_file_id}", flush=True)
+            
+            try:
+                # analysis.audio_file_id가 올바른지 확인
+                analysis.audio_file_id = int(audio_file_id) # 강제로 int 변환
+                db.add(analysis)
+                db.commit()
+                db.refresh(analysis)
+                logger.info(f"Efficiency analysis created for audio_file_id={audio_file_id}")
+                print(f"[DEBUG] DB Commit successful (create). ID: {analysis.id}", flush=True)
+            except IntegrityError:
+                logger.warning(f"Race condition detected for audio_file_id={audio_file_id}. Switching to update.")
+                print(f"[DEBUG] Race condition detected. Switching to update.", flush=True)
+                db.rollback()
+                
+                # 다시 조회 후 업데이트
+                existing = db.query(MeetingEfficiencyAnalysis).filter(
+                    MeetingEfficiencyAnalysis.audio_file_id == audio_file_id
+                ).first()
+                
+                if existing:
+                    update_analysis_fields(existing, analysis)
+                    db.commit()
+                    db.refresh(existing)
+                    print(f"[DEBUG] DB Commit successful (update after race condition)", flush=True)
+                else:
+                    logger.error("Failed to recover from race condition: record still not found")
 
     except Exception as e:
         logger.error(f"Error in efficiency analysis background task: {e}", exc_info=True)
+        print(f"[DEBUG] Error in background task: {e}", flush=True)
         db.rollback()
     finally:
         db.close()
+        # 작업 완료 후 락 해제
+        if int(audio_file_id) in processing_files:
+            processing_files.remove(int(audio_file_id))
+        print(f"[DEBUG] Released lock for audio_file_id={audio_file_id}", flush=True)
 
 
 @router.post("/analyze/{file_id}", status_code=status.HTTP_202_ACCEPTED)
@@ -313,6 +361,15 @@ def trigger_efficiency_analysis(
             detail=f"Audio file {file_id} not found"
         )
 
+    # 이미 분석 중인지 확인 (락)
+    if audio_file.id in processing_files:
+        print(f"[DEBUG] Analysis already in progress for audio_file_id={audio_file.id}. Skipping.", flush=True)
+        return {
+            "message": "Efficiency analysis is already in progress",
+            "file_id": audio_file.id,
+            "status": "processing"
+        }
+
     # 기존 분석 결과 확인
     existing_analysis = db.query(MeetingEfficiencyAnalysis).filter(
         MeetingEfficiencyAnalysis.audio_file_id == audio_file.id
@@ -328,8 +385,12 @@ def trigger_efficiency_analysis(
         }
 
     # 백그라운드 작업 등록 (DB 세션은 태스크 내부에서 생성)
-    # file_id (요청 파라미터)를 그대로 전달 - UUID 문자열 또는 integer 모두 지원
-    background_tasks.add_task(run_efficiency_analysis, file_id if not file_id.isdigit() else audio_file.id)
+    # 항상 integer ID 전달
+    print(f"[DEBUG] Triggering analysis for audio_file_id={audio_file.id}", flush=True)
+    
+    # 락 설정
+    processing_files.add(audio_file.id)
+    background_tasks.add_task(run_efficiency_analysis, audio_file.id)
 
     return {
         "message": "Efficiency analysis started",
@@ -396,6 +457,7 @@ def get_efficiency_analysis(
     - 프론트엔드에서 분석 트리거를 먼저 호출해야 함
     """
     # AudioFile 찾기 - ID(숫자)로 먼저 시도, 실패시 문자열 검색
+    print(f"[DEBUG] Searching for audio file with ID: {file_id}", flush=True)
     audio_file = None
     if file_id.isdigit():
         audio_file = db.query(AudioFile).filter(AudioFile.id == int(file_id)).first()
@@ -406,10 +468,17 @@ def get_efficiency_analysis(
         ).first()
 
     if not audio_file:
+        print(f"[DEBUG] Audio file NOT found for file_id={file_id}", flush=True)
+        # 디버깅을 위해 DB에 있는 파일들 일부 출력
+        all_files = db.query(AudioFile).limit(5).all()
+        print(f"[DEBUG] Available files (first 5): {[f.file_path for f in all_files]}", flush=True)
+        
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Audio file {file_id} not found"
         )
+
+    print(f"[DEBUG] Found audio_file: id={audio_file.id}, path={audio_file.file_path}", flush=True)
 
     # 분석 결과 조회
     analysis = db.query(MeetingEfficiencyAnalysis).filter(
@@ -417,6 +486,7 @@ def get_efficiency_analysis(
     ).first()
 
     if not analysis:
+        print(f"[DEBUG] Efficiency analysis NOT found for audio_file_id={audio_file.id}", flush=True)
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Efficiency analysis not found for file {file_id}. Please trigger analysis first."
@@ -470,7 +540,12 @@ def get_efficiency_analysis(
         "total_turns": analysis.total_turns,
         "total_sentences": analysis.total_sentences,
         "analysis_version": analysis.analysis_version,
-        "analyzed_at": analysis.analyzed_at.isoformat() if analysis.analyzed_at else None
+        "analyzed_at": analysis.analyzed_at.isoformat() if analysis.analyzed_at else None,
+        
+        # New fields
+        "qualitative_analysis": analysis.qualitative_analysis,
+        "silence_analysis": analysis.silence_analysis,
+        "interaction_analysis": analysis.interaction_analysis
     }
 
 

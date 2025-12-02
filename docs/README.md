@@ -127,6 +127,38 @@ ListenCarePlease 프로젝트의 모든 기술 문서는 이 폴더에서 확인
 
 ---
 
+### 5️⃣ **[데이터베이스 스키마](./database-schema.md)**
+**대상**: 백엔드 개발자, DB 관리자
+
+**내용**:
+- ERD (Entity Relationship Diagram)
+- 12개 테이블 상세 정의
+  1. users (사용자)
+  2. audio_files (오디오 파일)
+  3. preprocessing_results (전처리 결과)
+  4. stt_results (STT 결과)
+  5. diarization_results (화자 분리 결과)
+  6. detected_names (감지된 이름)
+  7. user_confirmations (사용자 확정 정보)
+  8. speaker_mappings (화자 태깅 결과)
+  9. final_transcripts (최종 대본)
+  10. summaries (요약 결과)
+  11. **speaker_profiles** (화자 프로필 - 자동 인식) ⭐ 신규!
+  12. **meeting_efficiency_analysis** (효율성 분석) ⭐ 신규!
+- 데이터 흐름 예시 (전체 파이프라인)
+- 주요 알고리즘과 DB 관계
+- 테이블별 데이터 크기 예상
+- 인덱스 전략
+- 마이그레이션 가이드 (Alembic)
+
+**언제 읽어야 하나요?**
+- 데이터베이스 구조를 이해하고 싶을 때
+- 새로운 테이블을 추가할 때
+- 쿼리 최적화가 필요할 때
+- 마이그레이션을 실행할 때
+
+---
+
 ## 🔍 코드 구조 상세 분석
 
 ### 📁 Backend 구조
@@ -937,6 +969,18 @@ Turn 3: 모순 발견
 ---
 
 ## 🔄 최신 업데이트
+
+**[2025-12-01]** 문서 업데이트 - 실제 구현 코드 및 DB 스키마 추가
+- ✅ **AI-Pipeline-Code.md 생성** - 전체 4개 Phase의 실제 구현 코드 정리
+- ✅ **COMPLETE_GUIDE.md 업데이트** - 12. 핵심 구현 코드 예제 섹션 추가
+  - Phase 1: VAD, STT 병렬 처리, Diarization (Senko) GPU 가속
+  - Phase 2: NER (BERT + Levenshtein), 닉네임 생성 (Smart Selection 70% 비용 절감)
+  - Phase 3: LangGraph Agent (5개 노드, Tool, 멀티턴 LLM, 소거법)
+  - Phase 4: 효율성 분석 (TTR, PPL), RAG (ChromaDB, 화자 자동 추출)
+- ✅ **database-schema.md 업데이트** - 신규 테이블 2개 추가
+  - 11. speaker_profiles: 화자 자동 인식 (음성/텍스트 임베딩 기반)
+  - 12. meeting_efficiency_analysis: 5가지 지표 기반 효율성 분석 (Entropy, TTR, Info Content, Sentence Prob, PPL)
+- 📄 참고: [AI-Pipeline-Code.md](../AI-Pipeline-Code.md) | [database-schema.md](./database-schema.md)
 
 **[2025-11-27]** 회의 효율성 분석 기능 구현 완료
 - ✅ 전체 회의 지표 4종 추가 (TTR, 정보량, 문장 확률, PPL)

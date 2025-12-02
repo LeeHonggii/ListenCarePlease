@@ -18,20 +18,18 @@ app.add_middleware(
 )
 
 
-# 앱 시작 시 데이터베이스 테이블 생성
+# 앱 시작 시 LangSmith 설정
 @app.on_event("startup")
 async def startup_event():
     """앱 시작 시 실행되는 이벤트"""
     import os
-    from app.db.base import Base, engine
-    from app.models import user, audio_file, preprocessing, stt, diarization, tagging, transcript, todo, efficiency, section, keyword
 
     # LangSmith 추적 환경 변수 확인 및 자동 조정
     langchain_tracing = os.getenv("LANGCHAIN_TRACING_V2", "false")
     # LANGSMITH_API_KEY도 확인 (일부 설정에서 사용)
     langchain_api_key = os.getenv("LANGCHAIN_API_KEY") or os.getenv("LANGSMITH_API_KEY")
     langchain_project = os.getenv("LANGCHAIN_PROJECT", "speaker-tagging-agent")
-    
+
     if langchain_tracing.lower() == "true":
         if langchain_api_key and langchain_api_key.strip():
             # LANGCHAIN_API_KEY가 없으면 LANGSMITH_API_KEY를 복사
@@ -46,9 +44,7 @@ async def startup_event():
     else:
         print("ℹ️ LangSmith 추적이 비활성화되어 있습니다. (LANGCHAIN_TRACING_V2=true로 설정하세요)")
 
-    print("🔧 Creating database tables...")
-    Base.metadata.create_all(bind=engine)
-    print("✅ Database tables created successfully")
+    print("✅ Application startup complete")
 
 
 @app.get("/")
@@ -82,3 +78,9 @@ app.include_router(template.router, prefix=f"{settings.API_V1_STR}/template", ta
 
 from app.api.v1 import keyword
 app.include_router(keyword.router, prefix=f"{settings.API_V1_STR}/keyword", tags=["keyword"])
+
+from app.api.v1 import speaker_profile
+app.include_router(speaker_profile.router, prefix=f"{settings.API_V1_STR}/speaker-profiles", tags=["speaker-profiles"])
+
+from app.api.v1 import export
+app.include_router(export.router, prefix=f"{settings.API_V1_STR}/export", tags=["export"])

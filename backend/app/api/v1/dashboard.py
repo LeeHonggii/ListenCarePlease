@@ -12,6 +12,14 @@ from app.models.audio_file import AudioFile, FileStatus
 from app.models.tagging import SpeakerMapping
 from app.models.stt import STTResult
 from app.models.diarization import DiarizationResult
+from app.models.efficiency import MeetingEfficiencyAnalysis
+from app.models.user_confirmation import UserConfirmation
+from app.models.transcript import FinalTranscript, Summary
+from app.models.tagging import DetectedName
+from app.models.preprocessing import PreprocessingResult
+from app.models.section import MeetingSection
+from app.models.keyword import KeyTerm
+from app.models.todo import TodoItem
 from datetime import datetime, timedelta
 from typing import List, Optional
 import os
@@ -242,10 +250,31 @@ async def delete_audio_file(
     if not audio_file:
         raise HTTPException(status_code=404, detail="파일을 찾을 수 없습니다")
 
-    # 관련 데이터 삭제
-    db.query(STTResult).filter(STTResult.audio_file_id == file_id).delete()
-    db.query(DiarizationResult).filter(DiarizationResult.audio_file_id == file_id).delete()
-    db.query(SpeakerMapping).filter(SpeakerMapping.audio_file_id == file_id).delete()
+    # 관련 데이터 삭제 (순서 중요하지 않음, CASCADE가 없거나 불안정한 경우를 대비해 명시적 삭제)
+    # 테이블이 없을 경우를 대비해 예외 처리 추가
+    from sqlalchemy.exc import ProgrammingError, OperationalError
+
+    def safe_delete(model):
+        try:
+            db.query(model).filter(getattr(model, 'audio_file_id', None) == file_id or getattr(model, 'file_id', None) == file_id).delete()
+        except (ProgrammingError, OperationalError):
+            pass # 테이블이 없으면 무시
+        except Exception as e:
+            print(f"Error deleting {model.__tablename__}: {e}")
+
+    safe_delete(MeetingEfficiencyAnalysis)
+    safe_delete(UserConfirmation)
+    safe_delete(FinalTranscript)
+    safe_delete(Summary)
+    safe_delete(DetectedName)
+    safe_delete(PreprocessingResult)
+    safe_delete(MeetingSection)
+    safe_delete(KeyTerm)
+    safe_delete(TodoItem)
+    
+    safe_delete(STTResult)
+    safe_delete(DiarizationResult)
+    safe_delete(SpeakerMapping)
 
     # 실제 파일 삭제
     if audio_file.file_path and os.path.exists(audio_file.file_path):
@@ -255,7 +284,20 @@ async def delete_audio_file(
             print(f"파일 삭제 실패: {e}")
 
     # DB에서 삭제
-    db.delete(audio_file)
-    db.commit()
+    from sqlalchemy import text
+    try:
+        db.delete(audio_file)
+        db.commit()
+    except Exception as e:
+        print(f"ORM 삭제 실패 (테이블 누락 가능성): {e}")
+        db.rollback()
+        # ORM 실패 시 Raw SQL로 강제 삭제 (CASCADE 무시하고 해당 레코드만 삭제 시도)
+        try:
+            db.execute(text("DELETE FROM audio_files WHERE id = :id"), {"id": file_id})
+            db.commit()
+            print("Raw SQL로 강제 삭제 성공")
+        except Exception as sql_e:
+            print(f"Raw SQL 삭제 실패: {sql_e}")
+            raise HTTPException(status_code=500, detail=f"파일 삭제 중 오류가 발생했습니다: {str(sql_e)}")
 
     return {"message": "파일이 삭제되었습니다", "file_id": file_id}

@@ -48,9 +48,12 @@ async def name_based_tagging_node(state: AgentState) -> AgentState:
             os.environ["LANGCHAIN_TRACING_V2"] = "false"
 
     # LLM 초기화
+    # LLM 초기화
     # gpt-5-mini 모델은 temperature 기본값(1)만 지원하므로 명시적으로 설정
     model_name = "gpt-5-mini-2025-08-07"
     
+    print(f"🔍 [NameBasedTagging] Processing {len(name_mentions)} name mentions using {model_name}")
+
     # temperature 설정
     # gpt-5-mini는 기본값(1)만 지원하므로 temperature=1 명시
     # 다른 모델은 temperature=0.3 사용

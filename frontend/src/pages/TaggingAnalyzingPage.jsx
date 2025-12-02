@@ -25,7 +25,7 @@ export default function TaggingAnalyzingPage() {
         
         // 2. 결과가 준비될 때까지 폴링 (최대 60초)
         let attempts = 0
-        const maxAttempts = 60 // 60초 (1초마다 체크)
+        const maxAttempts = 600 // 600초 (10분) - 분석 시간 제한 대폭 완화
         
         const checkResult = async () => {
           try {

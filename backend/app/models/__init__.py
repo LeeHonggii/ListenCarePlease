@@ -6,6 +6,9 @@ from app.models.diarization import DiarizationResult
 from app.models.tagging import DetectedName, SpeakerMapping
 from app.models.transcript import FinalTranscript, Summary, SummaryType
 from app.models.todo import TodoItem, TodoPriority
+from app.models.speaker_profile import SpeakerProfile
+from app.models.keyword import KeyTerm
+from app.models.section import MeetingSection
 
 __all__ = [
     "User",
@@ -22,4 +25,7 @@ __all__ = [
     "SummaryType",
     "TodoItem",
     "TodoPriority",
+    "SpeakerProfile",
+    "KeyTerm",
+    "MeetingSection",
 ]

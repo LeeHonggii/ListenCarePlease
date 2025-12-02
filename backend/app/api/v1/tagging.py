@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.api.deps import get_db
+from langsmith import traceable
 from app.models.audio_file import AudioFile
 from app.models.tagging import DetectedName, SpeakerMapping
 from app.models.user_confirmation import UserConfirmation
@@ -519,15 +520,97 @@ async def confirm_tagging(
 
     db.commit()
 
+    # 화자 프로필 자동 저장
+    from app.models.speaker_profile import SpeakerProfile
+    from app.models.diarization import DiarizationResult
+    from openai import OpenAI
+    from app.core.config import settings
+    import numpy as np
+
+    profiles_saved = 0
+    for mapping in request.mappings:
+        if not mapping.final_name or mapping.final_name.strip() == "":
+            continue  # 이름이 없으면 스킵
+
+        # 이미 프로필이 있는지 확인
+        existing_profile = db.query(SpeakerProfile).filter(
+            SpeakerProfile.user_id == audio_file.user_id,
+            SpeakerProfile.speaker_name == mapping.final_name
+        ).first()
+
+        if existing_profile:
+            # 기존 프로필 업데이트 (신뢰도 증가)
+            existing_profile.confidence_score += 1
+            existing_profile.source_audio_file_id = audio_file.id
+            profiles_saved += 1
+            continue
+
+        # 새 프로필 생성
+        try:
+            # 1. 음성 임베딩 평균 계산
+            diar_results = db.query(DiarizationResult).filter(
+                DiarizationResult.audio_file_id == audio_file.id,
+                DiarizationResult.speaker_label == mapping.speaker_label
+            ).all()
+
+            embeddings = [np.array(d.embedding) for d in diar_results if d.embedding]
+            voice_embedding = np.mean(embeddings, axis=0).tolist() if embeddings else None
+
+            # 2. 텍스트 샘플 추출
+            sample_texts = []
+            for diar in diar_results[:5]:
+                segment_texts = [
+                    stt.text for stt in stt_results
+                    if diar.start_time <= stt.start_time < diar.end_time
+                ]
+                if segment_texts:
+                    sample_texts.append(" ".join(segment_texts))
+
+            # 3. 텍스트 임베딩 생성
+            text_embedding = None
+            if sample_texts:
+                try:
+                    client = OpenAI(api_key=settings.OPENAI_API_KEY)
+                    combined_text = " ".join(sample_texts)
+                    response = client.embeddings.create(
+                        model="text-embedding-3-small",
+                        input=combined_text
+                    )
+                    text_embedding = response.data[0].embedding
+                except Exception as e:
+                    print(f"⚠️ 텍스트 임베딩 생성 실패: {e}")
+
+            # 4. 프로필 저장
+            new_profile = SpeakerProfile(
+                user_id=audio_file.user_id,
+                speaker_name=mapping.final_name,
+                voice_embedding=voice_embedding,
+                text_embedding=text_embedding,
+                sample_texts=sample_texts,
+                source_audio_file_id=audio_file.id,
+                confidence_score=1
+            )
+            db.add(new_profile)
+            profiles_saved += 1
+            print(f"✅ 프로필 저장: {mapping.final_name} (화자: {mapping.speaker_label})")
+        except Exception as e:
+            print(f"⚠️ 프로필 저장 실패 ({mapping.final_name}): {e}")
+
+    db.commit()
+
+    if profiles_saved > 0:
+        print(f"✅ {profiles_saved}개 화자 프로필 자동 저장 완료")
+
     # 화자 태깅 완료 후 효율성 분석 자동 실행
     from app.api.v1.efficiency import run_efficiency_analysis
-    background_tasks.add_task(run_efficiency_analysis, audio_file.id)
+    print(f"🚀 [Tagging] Triggering background efficiency analysis for file {audio_file.id}")
+    background_tasks.add_task(run_efficiency_analysis, str(audio_file.id))
 
     # 구간 분석(템플릿 피팅) 자동 실행
     from app.services.template_generator import run_template_generation_background
     background_tasks.add_task(run_template_generation_background, audio_file.id)
 
-    response_message = "화자 태깅이 완료되었습니다. 효율성 분석이 백그라운드에서 실행됩니다."
+    response_message = f"화자 태깅이 완료되었습니다. {profiles_saved}개 프로필이 저장되었습니다."
     if needs_rag_reinit:
         response_message += " 화자명이 변경되어 벡터 DB가 삭제되었습니다. RAG 기능을 사용하려면 다시 초기화해주세요."
 

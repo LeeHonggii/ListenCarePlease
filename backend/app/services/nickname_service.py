@@ -11,6 +11,7 @@ from typing import List, Dict, Optional, Any
 from pathlib import Path
 from openai import OpenAI
 from app.core.config import settings
+from langsmith import traceable
 
 logger = logging.getLogger(__name__)
 
@@ -176,6 +177,7 @@ class NicknameService:
         unique_selected.sort(key=lambda x: x.get('start', x.get('idx', 0)))
         return unique_selected[:max_total]
 
+    @traceable(name="generate_speaker_nickname", run_type="llm")
     def call_llm_for_nickname(
         self,
         prompt: str,
@@ -184,12 +186,12 @@ class NicknameService:
     ) -> Optional[Dict]:
         """
         LLM 호출하여 닉네임 생성
-        
+
         Args:
             prompt: LLM 프롬프트
             speaker_id: 화자 ID
             max_retries: 최대 재시도 횟수
-            
+
         Returns:
             LLM 응답 결과 (JSON 파싱된 딕셔너리) 또는 None
         """

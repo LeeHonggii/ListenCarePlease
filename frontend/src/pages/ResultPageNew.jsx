@@ -20,32 +20,44 @@ export default function ResultPageNew() {
   const [activeSection, setActiveSection] = useState(null)
   const [keywords, setKeywords] = useState([])
   const [activeKeyword, setActiveKeyword] = useState(null)
+  const [showMeetingMinutesMenu, setShowMeetingMinutesMenu] = useState(false)
+  const [showDownloadMenu, setShowDownloadMenu] = useState(false)
 
   useEffect(() => {
     fetchResult()
   }, [fileId])
 
   // 효율성 분석 결과 폴링
+  // 효율성 분석 결과 폴링 (재귀적 setTimeout 사용)
   useEffect(() => {
     if (efficiency) return
+
+    let timeoutId = null;
 
     const pollEfficiency = async () => {
       try {
         const response = await axios.get(`${API_BASE_URL}/api/v1/efficiency/${fileId}`)
         if (response.data) {
           setEfficiency(response.data)
+          // 성공하면 더 이상 폴링하지 않음
         }
       } catch (error) {
-        // 404는 아직 분석 중일 수 있으므로 무시
-        if (error.response?.status !== 404) {
-          console.error('Efficiency polling error:', error)
+        // 404는 아직 분석 중일 수 있으므로 무시하고 재시도
+        if (error.response?.status === 404) {
+           timeoutId = setTimeout(pollEfficiency, 3000)
+        } else {
+           console.error('Efficiency polling error:', error)
+           // 다른 에러(네트워크 등)가 나도 잠시 후 재시도 (안정성 확보)
+           timeoutId = setTimeout(pollEfficiency, 5000)
         }
       }
     }
 
-    const intervalId = setInterval(pollEfficiency, 3000) // 3초마다 확인
+    pollEfficiency()
 
-    return () => clearInterval(intervalId)
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId)
+    }
   }, [fileId, efficiency])
 
   const fetchResult = async () => {
@@ -129,18 +141,70 @@ export default function ResultPageNew() {
     }
   }
 
-  const handleDownload = () => {
-    if (!data) return
-    const text = data.final_transcript
-      .map(seg => `[${formatTime(seg.start_time)} - ${formatTime(seg.end_time)}] ${seg.speaker_name}:\n${seg.text}\n`)
-      .join('\n')
-    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `회의록_${fileId}.txt`
-    a.click()
-    URL.revokeObjectURL(url)
+  // 일반 녹취록 다운로드 (DOCX, XLSX, PDF)
+  const handleDownload = async (format) => {
+    if (!data?.audio_file_id) return
+    try {
+      const response = await axios.get(`${API_BASE_URL}/api/v1/export/${data.audio_file_id}/${format}`, {
+        responseType: 'blob'
+      })
+
+      const url = window.URL.createObjectURL(new Blob([response.data]))
+      const link = document.createElement('a')
+      link.href = url
+
+      // 파일명 추출
+      const contentDisposition = response.headers['content-disposition']
+      let fileName = `녹취록_${data.audio_file_id}.${format}`
+      if (contentDisposition) {
+        const fileNameMatch = contentDisposition.match(/filename\*=UTF-8''(.+)/)
+        if (fileNameMatch) {
+          fileName = decodeURIComponent(fileNameMatch[1])
+        }
+      }
+
+      link.setAttribute('download', fileName)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      setShowDownloadMenu(false)
+    } catch (error) {
+      console.error('Download failed:', error)
+      alert('다운로드에 실패했습니다.')
+    }
+  }
+
+  // AI 회의록 다운로드
+  const handleMeetingMinutesDownload = async (templateType) => {
+    if (!data?.audio_file_id) return
+    try {
+      const response = await axios.get(`${API_BASE_URL}/api/v1/export/${data.audio_file_id}/meeting-minutes?template_type=${templateType}`, {
+        responseType: 'blob'
+      })
+
+      const url = window.URL.createObjectURL(new Blob([response.data]))
+      const link = document.createElement('a')
+      link.href = url
+
+      // 파일명 추출 (Content-Disposition 헤더에서)
+      const contentDisposition = response.headers['content-disposition']
+      let fileName = `회의록_${data.audio_file_id}.docx`
+      if (contentDisposition) {
+        const fileNameMatch = contentDisposition.match(/filename\*=UTF-8''(.+)/)
+        if (fileNameMatch) {
+            fileName = decodeURIComponent(fileNameMatch[1])
+        }
+      }
+
+      link.setAttribute('download', fileName)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      setShowMeetingMinutesMenu(false)
+    } catch (error) {
+      console.error('회의록 생성 실패:', error)
+      alert('회의록 생성 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.')
+    }
   }
 
   const formatTime = (seconds) => {
@@ -197,6 +261,79 @@ export default function ResultPageNew() {
     )
   }
 
+  // 차트 데이터 계산
+  const getChartData = () => {
+    // 1. 효율성 분석 결과가 있는 경우
+    if (efficiency?.speaker_metrics && Array.isArray(efficiency.speaker_metrics)) {
+      const doughnutData = {
+        labels: efficiency.speaker_metrics.map(s => s.speaker_name || 'Unknown'),
+        datasets: [{
+          data: efficiency.speaker_metrics.map(s => s.turn_frequency?.total_duration || 0),
+          backgroundColor: [
+            'rgba(99, 102, 241, 0.7)', 'rgba(236, 72, 153, 0.7)', 'rgba(34, 197, 94, 0.7)',
+            'rgba(251, 146, 60, 0.7)', 'rgba(168, 85, 247, 0.7)'
+          ],
+          borderWidth: 1
+        }]
+      };
+      
+      const barData = {
+        labels: efficiency.speaker_metrics.map(s => s.speaker_name || 'Unknown'),
+        datasets: [{
+          label: '발화 횟수',
+          data: efficiency.speaker_metrics.map(s => s.turn_frequency?.turn_count || 0),
+          backgroundColor: 'rgba(59, 130, 246, 0.7)',
+          borderRadius: 4
+        }]
+      };
+      
+      return { doughnutData, barData };
+    } 
+    // 2. 효율성 분석은 없지만 회의록 데이터가 있는 경우 (로컬 계산)
+    else if (data?.final_transcript && Array.isArray(data.final_transcript)) {
+      const speakerStats = {};
+      data.final_transcript.forEach(t => {
+        const name = t.speaker_name || 'Unknown';
+        if (!speakerStats[name]) {
+          speakerStats[name] = { duration: 0, count: 0 };
+        }
+        speakerStats[name].duration += (t.end_time - t.start_time);
+        speakerStats[name].count += 1;
+      });
+      const labels = Object.keys(speakerStats);
+      
+      const doughnutData = {
+        labels: labels,
+        datasets: [{
+          data: labels.map(l => speakerStats[l].duration),
+          backgroundColor: [
+            'rgba(99, 102, 241, 0.7)', 'rgba(236, 72, 153, 0.7)', 'rgba(34, 197, 94, 0.7)',
+            'rgba(251, 146, 60, 0.7)', 'rgba(168, 85, 247, 0.7)'
+          ],
+          borderWidth: 1
+        }]
+      };
+      
+      const barData = {
+        labels: labels,
+        datasets: [{
+          label: '발화 횟수',
+          data: labels.map(l => speakerStats[l].count),
+          backgroundColor: 'rgba(59, 130, 246, 0.7)',
+          borderRadius: 4
+        }]
+      };
+      
+      return { doughnutData, barData };
+    }
+    
+    // 3. 데이터 없음
+    const emptyData = { labels: [], datasets: [] };
+    return { doughnutData: emptyData, barData: emptyData };
+  };
+
+  const { doughnutData, barData } = getChartData();
+
   if (loading) {
     return (
       <div className="p-8 flex items-center justify-center min-h-[calc(100vh-4rem)]">
@@ -227,24 +364,13 @@ export default function ResultPageNew() {
         </div>
 
         {/* 1. 효율성 차트 (점유율 & 빈도) */}
-        {efficiency && Array.isArray(efficiency.speaker_metrics) ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* 발화 점유율 (Doughnut) */}
             <div className="bg-bg-tertiary dark:bg-bg-tertiary-dark rounded-xl shadow-lg p-6 border border-bg-accent/30">
               <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">발화 점유율 (시간)</h3>
               <div className="h-[300px] flex justify-center">
                 <Doughnut
-                  data={{
-                    labels: efficiency.speaker_metrics.map(s => s.speaker_name),
-                    datasets: [{
-                      data: efficiency.speaker_metrics.map(s => s.turn_frequency?.total_duration || 0),
-                      backgroundColor: [
-                        'rgba(99, 102, 241, 0.7)', 'rgba(236, 72, 153, 0.7)', 'rgba(34, 197, 94, 0.7)',
-                        'rgba(251, 146, 60, 0.7)', 'rgba(168, 85, 247, 0.7)'
-                      ],
-                      borderWidth: 1
-                    }]
-                  }}
+                  data={doughnutData}
                   options={{ responsive: true, maintainAspectRatio: false }}
                 />
               </div>
@@ -255,15 +381,7 @@ export default function ResultPageNew() {
               <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">발화 빈도 (횟수)</h3>
               <div className="h-[300px]">
                 <Bar
-                  data={{
-                    labels: efficiency.speaker_metrics.map(s => s.speaker_name),
-                    datasets: [{
-                      label: '발화 횟수',
-                      data: efficiency.speaker_metrics.map(s => s.turn_frequency?.turn_count || 0),
-                      backgroundColor: 'rgba(59, 130, 246, 0.7)',
-                      borderRadius: 4
-                    }]
-                  }}
+                  data={barData}
                   options={{
                     responsive: true,
                     maintainAspectRatio: false,
@@ -272,15 +390,7 @@ export default function ResultPageNew() {
                 />
               </div>
             </div>
-          </div>
-        ) : (
-          <div className="bg-bg-tertiary dark:bg-bg-tertiary-dark p-12 rounded-xl border border-bg-accent/30 flex flex-col items-center justify-center gap-4">
-             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent-blue"></div>
-             <p className="text-gray-500 dark:text-gray-400 animate-pulse">
-               효율성 분석 중입니다...
-             </p>
-          </div>
-        )}
+        </div>
 
         {/* 2. 추가 기능 버튼 */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -336,14 +446,79 @@ export default function ResultPageNew() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* 왼쪽: 회의록 (2/3) */}
           <div className="lg:col-span-2 bg-bg-tertiary dark:bg-bg-tertiary-dark rounded-xl shadow-lg p-6 border border-bg-accent/30">
+
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-bold text-gray-900 dark:text-white">📝 전체 회의록</h2>
-              <button
-                onClick={handleDownload}
-                className="flex items-center gap-2 px-4 py-2 bg-bg-secondary dark:bg-bg-secondary-dark hover:bg-bg-accent/20 text-gray-700 dark:text-gray-200 rounded-lg font-medium transition-colors"
-              >
-                <span>💾</span> 다운로드
-              </button>
+
+              <div className="flex items-center gap-3">
+                {/* 일반 녹취록 다운로드 */}
+                <div className="relative">
+                  <button
+                    onClick={() => setShowDownloadMenu(!showDownloadMenu)}
+                    className="flex items-center gap-2 px-4 py-2 bg-bg-secondary dark:bg-bg-secondary-dark hover:bg-bg-accent/20 text-gray-700 dark:text-gray-200 rounded-lg font-medium transition-colors disabled:opacity-50"
+                    disabled={!data?.audio_file_id}
+                  >
+                    <span>💾</span> 녹취록 다운로드
+                  </button>
+
+                  {showDownloadMenu && (
+                    <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 z-10 overflow-hidden">
+                      <button
+                        onClick={() => handleDownload('docx')}
+                        className="w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 flex items-center gap-2 transition-colors"
+                      >
+                        <span>📝</span> Word (DOCX)
+                      </button>
+                      <button
+                        onClick={() => handleDownload('xlsx')}
+                        className="w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 flex items-center gap-2 transition-colors"
+                      >
+                        <span>📊</span> Excel (XLSX)
+                      </button>
+                      <button
+                        onClick={() => handleDownload('pdf')}
+                        className="w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 flex items-center gap-2 transition-colors"
+                      >
+                        <span>📄</span> PDF
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* AI 회의록 생성 */}
+                <div className="relative">
+                  <button
+                    onClick={() => setShowMeetingMinutesMenu(!showMeetingMinutesMenu)}
+                    className="flex items-center gap-2 px-4 py-2 bg-bg-secondary dark:bg-bg-secondary-dark hover:bg-bg-accent/20 text-gray-700 dark:text-gray-200 rounded-lg font-medium transition-colors disabled:opacity-50"
+                    disabled={!data?.audio_file_id}
+                  >
+                    <span>🤖</span> AI 회의록 생성
+                  </button>
+
+                  {showMeetingMinutesMenu && (
+                    <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 z-10 overflow-hidden">
+                      <button
+                        onClick={() => handleMeetingMinutesDownload(1)}
+                        className="w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 flex items-center gap-2 transition-colors"
+                      >
+                        <span>📋</span> 기본형 (한 줄 요약)
+                      </button>
+                      <button
+                        onClick={() => handleMeetingMinutesDownload(2)}
+                        className="w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 flex items-center gap-2 transition-colors"
+                      >
+                        <span>💭</span> 의견 중심형
+                      </button>
+                      <button
+                        onClick={() => handleMeetingMinutesDownload(4)}
+                        className="w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 flex items-center gap-2 transition-colors"
+                      >
+                        <span>📊</span> 상세 관리형 (추천)
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
 
             <div className="space-y-4 max-h-[800px] overflow-y-auto pr-2">

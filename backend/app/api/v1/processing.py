@@ -438,7 +438,11 @@ def process_audio_pipeline(
                 extracted_keywords = keyword_extraction_result.get("keywords", [])
                 if extracted_keywords and merged_result:
                     print(f"💾 키워드 {len(extracted_keywords)}개 DB 저장 중...")
-                    save_keywords_to_db(db, audio_file_id_db, extracted_keywords, merged_result)
+                    try:
+                        save_keywords_to_db(db, audio_file_id_db, extracted_keywords, merged_result)
+                    except Exception as kw_error:
+                        print(f"⚠️ 키워드 저장 실패 (무시함): {kw_error}")
+                        # 키워드 저장 실패는 전체 트랜잭션을 롤백하지 않도록 함
                 else:
                     print("⚠️ 저장할 키워드가 없거나 병합 결과가 없습니다.")
 

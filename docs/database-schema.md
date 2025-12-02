@@ -7,18 +7,18 @@
 │   users     │
 └──────┬──────┘
        │ 1
-       │
-       │ N
-┌──────┴──────────────┐
-│   audio_files       │
-└──────┬──────────────┘
+       ├──────────────────────────────────────┐
+       │ N                                    │ N
+┌──────┴──────────────┐              ┌───────┴──────────┐
+│   audio_files       │              │ speaker_profiles │
+└──────┬──────────────┘              └──────────────────┘
        │ 1
-       ├──────────────────┬──────────────────┬──────────────────┬──────────────────┐
-       │ N                │ N                │ N                │ N                │ 1
-┌──────┴─────────┐ ┌─────┴──────────┐ ┌────┴────────────┐ ┌──┴──────────────┐ ┌──┴──────────────┐
-│ preprocessing_ │ │  stt_results   │ │ diarization_    │ │ detected_names  │ │ user_           │
-│ results        │ └────────────────┘ │ results         │ └─────────────────┘ │ confirmations   │
-└────────────────┘                    └─────────────────┘                      └─────────────────┘
+       ├──────────────────┬──────────────────┬──────────────────┬──────────────────┬──────────────────┐
+       │ N                │ N                │ N                │ N                │ 1                │ 1
+┌──────┴─────────┐ ┌─────┴──────────┐ ┌────┴────────────┐ ┌──┴──────────────┐ ┌──┴──────────────┐ ┌──┴──────────────────┐
+│ preprocessing_ │ │  stt_results   │ │ diarization_    │ │ detected_names  │ │ user_           │ │ meeting_efficiency_ │
+│ results        │ └────────────────┘ │ results         │ └─────────────────┘ │ confirmations   │ │ analysis            │
+└────────────────┘                    └─────────────────┘                      └─────────────────┘ └─────────────────────┘
                                              │ 1
                                              │
                                              │ N
@@ -101,6 +101,7 @@
 - `user_confirmation` → UserConfirmation (One-to-One)
 - `final_transcripts` → FinalTranscript (One-to-Many)
 - `summaries` → Summary (One-to-Many)
+- `efficiency_analysis` → MeetingEfficiencyAnalysis (One-to-One)
 
 **코드 위치:** [backend/app/models/audio_file.py](../backend/app/models/audio_file.py)
 
@@ -321,6 +322,146 @@ I,O.md Step 6 결과 - 요약/자막
 
 ---
 
+### 11. speaker_profiles (화자 프로필)
+**실제 구현됨** - 동일 화자를 여러 파일에서 자동 인식
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INT (PK) | 프로필 ID |
+| user_id | INT (FK) | 사용자 ID |
+| speaker_name | VARCHAR(100) | 화자 실명 (예: "김민서") |
+| voice_embedding | JSON | 음성 임베딩 평균 벡터 (192차원 Senko) |
+| text_embedding | JSON | 텍스트 임베딩 (OpenAI text-embedding-3-small) |
+| sample_texts | JSON | 대표 발화 샘플 (텍스트 유사도 비교용) |
+| source_audio_file_id | INT (FK) | 프로필 생성 원본 파일 ID (nullable) |
+| confidence_score | INT | 프로필 사용 횟수 (default: 1, 높을수록 신뢰도 높음) |
+| created_at | TIMESTAMP | 생성 시간 |
+| updated_at | TIMESTAMP | 수정 시간 |
+
+**Relationships:**
+- `user` → User (Many-to-One)
+- `source_audio_file` → AudioFile (Many-to-One, nullable)
+
+**인덱스:**
+- `id` (단일)
+- `user_id` (단일)
+
+**JSON 형식 예시:**
+```json
+{
+  "voice_embedding": [0.12, -0.45, 0.78, ...],  // 192차원
+  "text_embedding": [0.11, -0.44, 0.67, ...],   // 1536차원
+  "sample_texts": [
+    "안녕하세요, 김민서입니다",
+    "네, 알겠습니다",
+    "그럼 다음 안건으로 넘어가겠습니다"
+  ]
+}
+```
+
+**사용 시나리오:**
+1. 사용자가 새 오디오 파일 업로드
+2. Diarization 완료 후 각 화자의 음성 임베딩 추출
+3. 기존 speaker_profiles와 코사인 유사도 비교 (임계값: 0.85)
+4. 일치하는 프로필이 있으면 자동으로 화자명 제안
+5. 사용자 확정 후 confidence_score 증가
+
+**코드 위치:** [backend/app/models/speaker_profile.py](../backend/app/models/speaker_profile.py)
+
+---
+
+### 12. meeting_efficiency_analysis (회의 효율성 분석)
+**실제 구현됨** - 5가지 지표 기반 효율성 분석 결과
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INT (PK) | 분석 결과 ID |
+| audio_file_id | INT (FK) | 오디오 파일 ID (UNIQUE) |
+| **entropy_values** | JSON | 엔트로피 시계열 데이터 (전체 담화) |
+| **entropy_avg** | FLOAT | 평균 엔트로피 |
+| **entropy_std** | FLOAT | 엔트로피 표준편차 |
+| **overall_ttr** | JSON | 전체 회의 TTR (Type-Token Ratio) |
+| **overall_information_content** | JSON | 전체 회의 정보량 (코사인 유사도) |
+| **overall_sentence_probability** | JSON | 전체 회의 문장 확률 (HDBSCAN) |
+| **overall_perplexity** | JSON | 전체 회의 PPL (KoGPT-2) |
+| **entropy_insight** | VARCHAR(500) | 엔트로피 AI 인사이트 (LLM 생성) |
+| **overall_ttr_insight** | VARCHAR(500) | TTR AI 인사이트 |
+| **overall_info_insight** | VARCHAR(500) | 정보량 AI 인사이트 |
+| **overall_sentence_prob_insight** | VARCHAR(500) | 문장 확률 AI 인사이트 |
+| **overall_ppl_insight** | VARCHAR(500) | PPL AI 인사이트 |
+| **speaker_metrics** | JSON | 화자별 5가지 지표 (발화 빈도, TTR, 정보량, 문장 확률, PPL) |
+| total_speakers | INT | 전체 화자 수 |
+| total_turns | INT | 전체 턴 수 |
+| total_sentences | INT | 전체 문장 수 |
+| analysis_version | VARCHAR(20) | 분석 알고리즘 버전 (default: "1.0") |
+| analyzed_at | TIMESTAMP | 분석 실행 시간 |
+
+**관계:** audio_file_id는 1:1 관계 (UNIQUE 제약)
+
+**speaker_metrics JSON 구조:**
+```json
+[
+  {
+    "speaker_label": "SPEAKER_00",
+    "speaker_name": "김민서",
+
+    "turn_frequency": {
+      "turn_count": 45,
+      "total_duration": 180.5,
+      "avg_turn_length": 4.0,
+      "time_series": [
+        {"time": 0, "cumulative_turns": 0},
+        {"time": 60, "cumulative_turns": 12}
+      ]
+    },
+
+    "ttr": {
+      "ttr_values": [
+        {"window_start": 0, "window_end": 10, "ttr": 0.75, "unique_nouns": 8, "total_nouns": 12}
+      ],
+      "ttr_avg": 0.68,
+      "ttr_std": 0.12
+    },
+
+    "information_content": {
+      "cosine_similarity_values": [
+        {"time": 10.5, "sentence": "오늘 회의 안건은...", "similarity": 0.85, "z_normalized": 0.5}
+      ],
+      "avg_similarity": 0.78,
+      "information_score": 0.22
+    },
+
+    "sentence_probability": {
+      "cluster_info": [
+        {"cluster_id": 0, "sentence_count": 15, "probability": 0.25}
+      ],
+      "rare_sentences": [
+        {"sentence": "특이한 발언...", "probability": 0.02, "cluster_id": 5}
+      ]
+    },
+
+    "perplexity": {
+      "ppl_values": [
+        {"window_start": 0, "window_end": 5, "ppl": 45.2, "loss": 3.81}
+      ],
+      "ppl_avg": 38.5,
+      "ppl_std": 12.3
+    }
+  }
+]
+```
+
+**5가지 분석 지표:**
+1. **발화 빈도 (Turn Frequency)**: 시간대별 발화 횟수 및 누적 턴 수
+2. **TTR (Type-Token Ratio)**: Mecab 형태소 분석 기반 어휘 다양성
+3. **정보량 (Information Content)**: SentenceTransformer 코사인 유사도 기반
+4. **문장 확률 (Sentence Probability)**: HDBSCAN 군집화 기반 희귀 문장 탐지
+5. **PPL (Perplexity)**: KoGPT-2 기반 조건부 Perplexity
+
+**코드 위치:** [backend/app/models/efficiency.py](../backend/app/models/efficiency.py)
+
+---
+
 ## 데이터 흐름 예시
 
 ### 전체 파이프라인
@@ -375,8 +516,21 @@ I,O.md Step 6 결과 - 요약/자막
    → audio_files.rag_collection_name = "meeting_{file_id}"
    → audio_files.rag_initialized_at = 현재 시간
 
-10. 요약 생성 (선택)
+11. 요약 생성 (선택)
    → summaries에 저장
+
+12. 효율성 분석 (선택)
+   → POST /api/v1/efficiency/{file_id}/analyze
+   → 5가지 지표 계산 (Entropy, TTR, Information Content, Sentence Probability, PPL)
+   → LLM이 각 지표에 대한 인사이트 생성
+   → meeting_efficiency_analysis 테이블에 저장
+
+13. 화자 프로필 저장 (선택)
+   → 사용자가 화자명 확정 후 프로필 저장 요청
+   → Diarization 임베딩 평균값 계산
+   → 대표 발화 텍스트 선택
+   → speaker_profiles 테이블에 저장
+   → 다음 파일 업로드 시 자동 인식에 활용
 ```
 
 ### 멀티턴 LLM 추론 흐름 (name_based_tagging)
@@ -490,11 +644,15 @@ WHERE speaker_label = 'SPEAKER_00';
 | speaker_mappings | 2~5 | 화자 수만큼 |
 | final_transcripts | ~200 | diarization_results와 동일 |
 | summaries | 1~3 | 요약, 자막 등 |
+| meeting_efficiency_analysis | 1 | 1:1 관계 (선택) |
+| speaker_profiles | 누적 | 사용자당 화자 수만큼 누적 |
 
 **디스크 사용량 예상:**
 - STT 결과: ~1MB (JSON 압축 시)
 - Diarization 임베딩: ~50KB (192dim * 200rows)
-- 전체 DB: ~2MB/hour
+- Efficiency Analysis: ~100KB (JSON 메트릭)
+- Speaker Profiles: ~30KB/프로필 (임베딩 포함)
+- 전체 DB: ~2.2MB/hour
 
 ---
 
@@ -521,32 +679,7 @@ CREATE INDEX idx_detected_name ON detected_names(detected_name);
 
 ## 추후 확장 가능성
 
-### 1. Speaker Profiles (화자 프로필)
-**용도:** 동일 화자를 여러 파일에서 자동 인식
-```sql
-CREATE TABLE speaker_profiles (
-    id INT PRIMARY KEY,
-    user_id INT,
-    speaker_name VARCHAR(100),
-    voice_embedding JSON,  -- 평균 임베딩
-    created_at TIMESTAMP
-);
-```
-
-### 2. RAG Embeddings (벡터 DB)
-**용도:** 대본 내용 검색 및 Q&A
-```sql
-CREATE TABLE rag_embeddings (
-    id INT PRIMARY KEY,
-    audio_file_id INT,
-    segment_index INT,
-    text TEXT,
-    embedding JSON,  -- 1536차원 (OpenAI)
-    created_at TIMESTAMP
-);
-```
-
-### 3. Processing Logs (에러 추적)
+### 1. Processing Logs (에러 추적)
 **용도:** 각 단계별 에러 로그 및 디버깅
 ```sql
 CREATE TABLE processing_logs (
@@ -560,7 +693,7 @@ CREATE TABLE processing_logs (
 );
 ```
 
-### 4. User Sessions (리프레시 토큰)
+### 2. User Sessions (리프레시 토큰)
 **용도:** JWT 리프레시 토큰 관리
 ```sql
 CREATE TABLE user_sessions (
@@ -568,6 +701,33 @@ CREATE TABLE user_sessions (
     user_id INT,
     refresh_token VARCHAR(500),
     expires_at TIMESTAMP,
+    created_at TIMESTAMP
+);
+```
+
+### 3. Meeting Templates (회의 템플릿)
+**용도:** 반복적인 회의 유형에 대한 템플릿 저장
+```sql
+CREATE TABLE meeting_templates (
+    id INT PRIMARY KEY,
+    user_id INT,
+    template_name VARCHAR(100),  -- "주간 스프린트", "분기 리뷰" 등
+    typical_speakers JSON,  -- 예상 화자 목록
+    agenda_keywords JSON,  -- 주요 키워드
+    efficiency_thresholds JSON,  -- 기준 효율성 지표
+    created_at TIMESTAMP
+);
+```
+
+### 4. Comparative Analysis (비교 분석)
+**용도:** 여러 회의 간 효율성 비교
+```sql
+CREATE TABLE comparative_analysis (
+    id INT PRIMARY KEY,
+    user_id INT,
+    analysis_name VARCHAR(100),
+    audio_file_ids JSON,  -- 비교 대상 파일들
+    comparison_results JSON,  -- 비교 결과
     created_at TIMESTAMP
 );
 ```
@@ -596,6 +756,9 @@ alembic downgrade -1
 2. **Add nickname fields** - speaker_mappings에 nickname, nickname_metadata 추가
 3. **Add user_confirmations** - 사용자 확정 정보 테이블 추가
 4. **Add indexes** - 성능 최적화를 위한 인덱스 추가
+5. **Add RAG fields** - audio_files에 rag_collection_name, rag_initialized, rag_initialized_at 추가
+6. **Add meeting_efficiency_analysis** - 회의 효율성 분석 테이블 추가 (5가지 지표)
+7. **Add speaker_profiles** - 화자 프로필 테이블 추가 (자동 인식 기능) [2eddc0de3d29]
 
 ---
 

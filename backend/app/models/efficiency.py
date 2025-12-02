@@ -1,7 +1,7 @@
 """
 회의 효율성 분석 결과 모델
 """
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, JSON
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, JSON, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.db.base import Base
@@ -12,16 +12,12 @@ class MeetingEfficiencyAnalysis(Base):
     __tablename__ = "meeting_efficiency_analysis"
 
     id = Column(Integer, primary_key=True, index=True)
-    audio_file_id = Column(Integer, ForeignKey("audio_files.id", ondelete="CASCADE"),
-                          nullable=False, unique=True, index=True)
+    audio_file_id = Column(Integer, ForeignKey("audio_files.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
 
-    # === 전체 회의 지표 ===
-    # 엔트로피 (전체 담화)
-    entropy_values = Column(JSON, nullable=True)
-    # [{time: 10.5, entropy: 2.34, window_words: ["회의", "안건", ...]}, ...]
-
-    entropy_avg = Column(Float, nullable=True)  # 평균 엔트로피
-    entropy_std = Column(Float, nullable=True)  # 표준편차
+    # === 엔트로피 (화제 다양성) ===
+    entropy_values = Column(JSON, nullable=True)  # [{"time": 10.5, "entropy": 2.3}, ...]
+    entropy_avg = Column(Float, nullable=True)
+    entropy_std = Column(Float, nullable=True)
 
     # 전체 회의 TTR
     overall_ttr = Column(JSON, nullable=True)
@@ -119,6 +115,11 @@ class MeetingEfficiencyAnalysis(Base):
     # === 분석 정보 ===
     analysis_version = Column(String(20), nullable=False, default="1.0")  # 분석 알고리즘 버전
     analyzed_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    # === 정성적 분석 ===
+    qualitative_analysis = Column(JSON, nullable=True)  # 정성적 분석 결과
+    silence_analysis = Column(JSON, nullable=True)  # 침묵 분석 결과
+    interaction_analysis = Column(JSON, nullable=True)  # 상호작용 분석 결과
 
     # Relationships
     audio_file = relationship("AudioFile", back_populates="efficiency_analysis")

@@ -110,7 +110,6 @@ docker compose down
 docker compose down -v
 
 # 이미지까지 삭제
-docker compose down --rmi all
 
 # 완전 초기화 후 재시작
 docker compose down -v
