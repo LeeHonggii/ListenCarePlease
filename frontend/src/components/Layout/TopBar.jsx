@@ -51,10 +51,10 @@ export default function TopBar() {
         <div className="relative group">
           <button className="flex items-center gap-2 p-2 rounded-lg hover:bg-bg-tertiary dark:hover:bg-bg-tertiary-dark transition-colors">
             <div className="w-8 h-8 rounded-full bg-accent-sage dark:bg-accent-teal text-gray-900 dark:text-white flex items-center justify-center font-medium">
-              {user?.username?.[0]?.toUpperCase() || 'U'}
+              {user?.full_name ? user.full_name[0] : (user?.email ? user.email[0].toUpperCase() : 'U')}
             </div>
             <span className="text-sm font-medium text-gray-900 dark:text-white hidden md:block">
-              {user?.username || 'User'}
+              {user?.full_name || user?.email || 'User'}
             </span>
           </button>
 

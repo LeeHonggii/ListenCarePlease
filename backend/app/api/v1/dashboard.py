@@ -183,7 +183,12 @@ async def get_recent_files(
             "error_message": file.error_message,
 
             # 태깅 완료 여부
-            "has_tagging": has_tagging
+            "has_tagging": has_tagging,
+            
+            # 화자 정보 확정 여부
+            "has_user_confirmation": db.query(UserConfirmation).filter(
+                UserConfirmation.audio_file_id == file.id
+            ).first() is not None
         })
 
     return result

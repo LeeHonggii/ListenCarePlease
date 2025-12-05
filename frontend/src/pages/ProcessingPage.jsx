@@ -78,13 +78,23 @@ const ProcessingPage = () => {
             }
           } catch (err) {
             console.error('Status polling error:', err);
-            // 폴링 에러는 무시하고 계속 진행
+            // 404 에러 처리 (파일이 없는 경우)
+            if (err.response && err.response.status === 404) {
+              clearInterval(pollingInterval);
+              setError('파일을 찾을 수 없습니다. 대시보드로 이동합니다.');
+              setTimeout(() => navigate('/'), 2000);
+            }
           }
         }, 2000);
 
       } catch (err) {
         console.error('Processing error:', err);
-        setError(err.response?.data?.detail || '파일 처리 중 오류가 발생했습니다.');
+        if (err.response && err.response.status === 404) {
+          setError('파일을 찾을 수 없습니다. 대시보드로 이동합니다.');
+          setTimeout(() => navigate('/'), 2000);
+        } else {
+          setError(err.response?.data?.detail || '파일 처리 중 오류가 발생했습니다.');
+        }
       }
     };
 
@@ -192,16 +202,14 @@ const ProcessingPage = () => {
             ].map((step, index) => (
               <div
                 key={index}
-                className={`flex items-center space-x-3 transition-all duration-300 ${
-                  step.done ? 'opacity-100' : 'opacity-40'
-                }`}
+                className={`flex items-center space-x-3 transition-all duration-300 ${step.done ? 'opacity-100' : 'opacity-40'
+                  }`}
               >
                 <div
-                  className={`w-6 h-6 rounded-full flex items-center justify-center ${
-                    step.done
+                  className={`w-6 h-6 rounded-full flex items-center justify-center ${step.done
                       ? 'bg-green-500'
                       : 'bg-gray-300 dark:bg-gray-600'
-                  }`}
+                    }`}
                 >
                   {step.done && (
                     <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">

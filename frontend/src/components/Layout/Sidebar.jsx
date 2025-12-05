@@ -28,7 +28,7 @@ export default function Sidebar() {
         getRecentFiles(user.id, 10),
         getProcessingFilesFromDashboard(user.id)
       ])
-      setRecentFiles(recent)
+      setRecentFiles(recent.filter(file => file.status !== 'processing'))
       setProcessingFiles(processing)
     } catch (error) {
       console.error('파일 목록 로드 실패:', error)
@@ -42,7 +42,17 @@ export default function Sidebar() {
       const fileId = file.file_uuid || file.id
       navigate(`/processing/${fileId}`)
     } else if (file.status === 'completed') {
-      navigate(`/result/${file.id}`)
+      // 단계별 이동 로직
+      if (!file.has_user_confirmation) {
+        // 1. 화자 정보 확정 전 -> 확정 페이지로
+        navigate(`/confirm/${file.id}`)
+      } else if (!file.has_tagging) {
+        // 2. 화자 정보 확정 후, 태깅 완료 전 -> 태깅 페이지로
+        navigate(`/tagging/${file.id}`)
+      } else {
+        // 3. 모든 과정 완료 -> 결과 페이지로
+        navigate(`/result/${file.id}`)
+      }
     }
   }
 
@@ -64,7 +74,7 @@ export default function Sidebar() {
 
       // 삭제된 파일 페이지에 있다면 대시보드로 이동
       if (location.pathname.includes(`/result/${fileId}`) ||
-          location.pathname.includes(`/processing/${fileId}`)) {
+        location.pathname.includes(`/processing/${fileId}`)) {
         navigate('/')
       }
     } catch (error) {
@@ -158,11 +168,10 @@ export default function Sidebar() {
               >
                 <button
                   onClick={() => handleFileClick(file)}
-                  className={`w-full text-left p-3 rounded-lg transition-colors ${
-                    location.pathname.includes(`/result/${file.id}`)
-                      ? 'bg-bg-tertiary dark:bg-bg-tertiary-dark'
-                      : 'hover:bg-bg-tertiary dark:hover:bg-bg-tertiary-dark'
-                  }`}
+                  className={`w-full text-left p-3 rounded-lg transition-colors ${location.pathname.includes(`/result/${file.id}`)
+                    ? 'bg-bg-tertiary dark:bg-bg-tertiary-dark'
+                    : 'hover:bg-bg-tertiary dark:hover:bg-bg-tertiary-dark'
+                    }`}
                 >
                   <div className="flex items-start gap-2">
                     <span className="text-accent-green mt-0.5">✓</span>
@@ -200,11 +209,10 @@ export default function Sidebar() {
       <div className="p-4 border-t border-bg-accent/30 space-y-1">
         <button
           onClick={() => navigate('/')}
-          className={`w-full text-left px-3 py-2 rounded-lg transition-colors flex items-center gap-2 ${
-            location.pathname === '/'
-              ? 'bg-bg-tertiary dark:bg-bg-tertiary-dark text-gray-900 dark:text-white'
-              : 'text-gray-600 dark:text-gray-400 hover:bg-bg-tertiary dark:hover:bg-bg-tertiary-dark'
-          }`}
+          className={`w-full text-left px-3 py-2 rounded-lg transition-colors flex items-center gap-2 ${location.pathname === '/'
+            ? 'bg-bg-tertiary dark:bg-bg-tertiary-dark text-gray-900 dark:text-white'
+            : 'text-gray-600 dark:text-gray-400 hover:bg-bg-tertiary dark:hover:bg-bg-tertiary-dark'
+            }`}
         >
           <span>🏠</span>
           <span className="text-sm font-medium">메인</span>

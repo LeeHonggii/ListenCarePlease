@@ -7,8 +7,22 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 1800000, 
+  timeout: 1800000,
 });
+
+// 요청 인터셉터 추가
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('access_token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
 
 // 파일 업로드
 export const uploadAudioFile = async (file, onUploadProgress) => {
@@ -200,6 +214,14 @@ export const getEfficiencyOverview = async (limit = 10) => {
 // 특정 화자의 효율성 지표 조회
 export const getSpeakerEfficiency = async (fileId, speakerLabel) => {
   const response = await api.get(`/api/v1/efficiency/${fileId}/speaker/${speakerLabel}`);
+  return response.data;
+};
+
+// ===== 캘린더 API =====
+
+// 구글 캘린더 일정 추가
+export const addToCalendar = async (eventData) => {
+  const response = await api.post('/api/v1/calendar/create_event', eventData);
   return response.data;
 };
 

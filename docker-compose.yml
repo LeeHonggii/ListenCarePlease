@@ -14,7 +14,7 @@ services:
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -42,7 +42,7 @@ services:
         condition: service_healthy
     environment:
       - MYSQL_HOST=mysql
-    shm_size: '4gb'  # Increase shared memory for large ML model loading
+    shm_size: '4gb' # Increase shared memory for large ML model loading
     # GPU 설정: NVIDIA GPU 사용
     deploy:
       resources:
@@ -53,7 +53,7 @@ services:
           devices:
             - driver: nvidia
               count: all
-              capabilities: [gpu]
+              capabilities: [ gpu ]
 
   # React Frontend
   frontend:

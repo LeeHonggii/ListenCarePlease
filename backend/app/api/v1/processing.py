@@ -4,6 +4,9 @@
 - STT (Step 3)
 """
 from fastapi import APIRouter, HTTPException, BackgroundTasks
+import torch.serialization
+if not hasattr(torch.serialization, "safe_globals"):
+    torch.serialization.safe_globals = []
 from pathlib import Path
 from typing import Any, Dict
 from app.services.preprocessing import preprocess_audio
@@ -15,7 +18,8 @@ from app.core.device import get_device
 import json
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from app.api.deps import get_db
+from sqlalchemy import func
+from app.api.deps import get_db, get_current_user
 from fastapi import Depends
 from app.models.audio_file import AudioFile, FileStatus
 from app.models.preprocessing import PreprocessingResult
@@ -33,14 +37,17 @@ PROCESSING_STATUS: Dict[str, dict] = {}
 
 def process_audio_pipeline(
     file_id: str,
+    user_id: int,
     whisper_mode: str = "local",
-    diarization_mode: str = "senko"
+    diarization_mode: str = "senko",
+    skip_stt: bool = False
 ):
     """
     백그라운드에서 오디오 처리 파이프라인 실행
 
     Args:
         file_id: 파일 ID
+        user_id: 사용자 ID
         whisper_mode: Whisper 모드 ("local" 또는 "api")
         diarization_mode: 화자 분리 모델 ("senko" 또는 "nemo")
     """
@@ -75,7 +82,7 @@ def process_audio_pipeline(
 
             # 새 파일이면 생성
             audio_file = AudioFile(
-                user_id=1,  # TODO: 실제 user_id로 교체
+                user_id=user_id,
                 original_filename=original_name,
                 file_path=str(input_path),
                 file_size=input_path.stat().st_size,
@@ -140,14 +147,40 @@ def process_audio_pipeline(
         }
 
         # Whisper 전사 (로컬 또는 API)
-        final_txt = run_stt_pipeline(
-            preprocessed_path,
-            work_dir,
-            openai_api_key=settings.OPENAI_API_KEY if not use_local else None,
-            use_local_whisper=use_local,
-            model_size=model_size,
-            device=device
-        )
+        # Whisper 전사 (로컬 또는 API)
+        if skip_stt:
+            print("⏩ STT 건너뛰기 (기존 결과 사용)")
+            # 기존 파일 찾기
+            possible_files = [
+                work_dir / "transcript.txt",
+                work_dir / f"{file_id}_transcript.txt",
+                work_dir / "final_transcript.txt"
+            ]
+            final_txt = None
+            for p in possible_files:
+                if p.exists():
+                    final_txt = p
+                    break
+            
+            if not final_txt:
+                print("⚠️ 기존 전사 파일을 찾을 수 없어 STT를 실행합니다.")
+                final_txt = run_stt_pipeline(
+                    preprocessed_path,
+                    work_dir,
+                    openai_api_key=settings.OPENAI_API_KEY if not use_local else None,
+                    use_local_whisper=use_local,
+                    model_size=model_size,
+                    device=device
+                )
+        else:
+            final_txt = run_stt_pipeline(
+                preprocessed_path,
+                work_dir,
+                openai_api_key=settings.OPENAI_API_KEY if not use_local else None,
+                use_local_whisper=use_local,
+                model_size=model_size,
+                device=device
+            )
 
         # STT 완료 후 메모리 정리 (Diarization 전 메모리 확보)
         print("🧹 STT 완료, 메모리 정리 중...")
@@ -205,10 +238,21 @@ def process_audio_pipeline(
         }
 
         try:
+            # 사용자 확정 화자 수 확인
+            confirmed_speaker_count = None
+            user_confirmation = db.query(UserConfirmation).filter(
+                UserConfirmation.audio_file_id == audio_file.id
+            ).first()
+            
+            if user_confirmation and user_confirmation.confirmed_speaker_count:
+                confirmed_speaker_count = user_confirmation.confirmed_speaker_count
+                print(f"🔍 사용자 확정 화자 수 적용: {confirmed_speaker_count}명")
+
             diarization_result = run_diarization(
                 preprocessed_path,
                 device=device,
-                mode=diarization_mode
+                mode=diarization_mode,
+                num_speakers=confirmed_speaker_count
             )
 
             # Diarization 결과 저장
@@ -245,7 +289,9 @@ def process_audio_pipeline(
                 json.dump(merged_result, f, ensure_ascii=False, indent=2)
 
         except Exception as diarization_error:
+            import traceback
             print(f"⚠️ Diarization failed: {diarization_error}")
+            print(traceback.format_exc())
             # Diarization 실패해도 STT 결과는 유지
             diarization_result = None
             merged_result = None
@@ -311,6 +357,18 @@ def process_audio_pipeline(
                 from app.models.tagging import SpeakerMapping
 
                 audio_file_id_db = audio_file.id
+
+                # 6-1) 기존 결과 삭제 (중복 방지)
+                # 재분석 시 기존 데이터를 지우고 새로 저장해야 함
+                print(f"🧹 기존 분석 결과 삭제 중: audio_file_id={audio_file_id_db}")
+                db.query(STTResult).filter(STTResult.audio_file_id == audio_file_id_db).delete()
+                db.query(DiarizationResult).filter(DiarizationResult.audio_file_id == audio_file_id_db).delete()
+                db.query(DetectedName).filter(DetectedName.audio_file_id == audio_file_id_db).delete()
+                # SpeakerMapping은 사용자 확정 정보가 있을 수 있으므로 주의해야 하지만,
+                # 재분석(Diarization 다시 함)의 경우 화자 레이블이 바뀌므로 초기화하는 것이 맞음
+                # 단, UserConfirmation은 유지됨
+                db.query(SpeakerMapping).filter(SpeakerMapping.audio_file_id == audio_file_id_db).delete()
+                db.flush()
 
                 # 6-2) STTResult 저장 (merged_result의 각 세그먼트)
                 if merged_result:
@@ -456,6 +514,11 @@ def process_audio_pipeline(
                 db.commit()
                 print(f"✅ DB 저장 완료: audio_file_id={audio_file_id_db}")
 
+                # 완료 시 메모리에서 제거하여 DB 조회를 유도 (즉시 반영)
+                if file_id in PROCESSING_STATUS:
+                    del PROCESSING_STATUS[file_id]
+                    print(f"🧹 메모리 상태 제거 완료 (DB 커밋 직후): {file_id}")
+
                 # DetectedName 개수 확인
                 detected_name_count = db.query(DetectedName).filter(
                     DetectedName.audio_file_id == audio_file_id_db
@@ -468,6 +531,56 @@ def process_audio_pipeline(
                 print(f"  - DiarizationResult 레코드: {len(diarization_result.get('turns', [])) if diarization_result else 0}개")
                 print(f"  - SpeakerMapping 레코드: {speaker_mapping_count}개")
                 print(f"  - KeyTerm 레코드: {len(extracted_keywords)}개")
+                
+                # 6-8) 효율성 분석 트리거 (비동기)
+                # 재분석 시 효율성 지표도 갱신되어야 함
+                print(f"📊 효율성 분석 트리거: audio_file_id={audio_file_id_db}")
+                from app.api.v1.efficiency import run_efficiency_analysis
+                
+                # 현재 스레드에서 바로 실행하지 않고, 별도 스레드/프로세스로 실행하거나
+                # 여기서는 간단히 함수 호출 (run_efficiency_analysis 내부에서 새 DB 세션 생성함)
+                # 주의: 이미 백그라운드 태스크 내부이므로, 동기적으로 호출해도 무방하나
+                # 시간이 걸릴 수 있으므로 별도 스레드로 실행하는 것이 좋음
+                
+                # 여기서는 간단히 동기 호출 (어차피 백그라운드 태스크임)
+                try:
+                    run_efficiency_analysis(str(audio_file_id_db))
+                except Exception as eff_error:
+                    print(f"⚠️ 효율성 분석 실패 (무시함): {eff_error}")
+
+                # 6-9) 화자 태깅 에이전트 자동 실행 (재분석의 경우)
+                # 화자 수가 변경되어 재분석된 경우, 에이전트도 다시 실행해야 함
+                print(f"🤖 화자 태깅 에이전트 트리거: audio_file_id={audio_file_id_db}")
+                from app.api.v1.tagging import run_tagging_agent
+                import asyncio
+                
+                try:
+                    # run_tagging_agent는 async 함수이므로 동기 함수인 process_audio_pipeline에서 실행하려면 이벤트 루프 필요
+                    # 이미 다른 루프가 돌고 있을 수 있으므로 체크
+                    try:
+                        loop = asyncio.get_event_loop()
+                    except RuntimeError:
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                    
+                    if loop.is_running():
+                        # 이미 루프가 실행 중이면 (드문 경우) create_task 사용 불가 (동기 함수라)
+                        # 별도 스레드에서 실행
+                        import threading
+                        def run_async_in_thread():
+                            new_loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(new_loop)
+                            new_loop.run_until_complete(run_tagging_agent(str(file_id), audio_file_id_db, audio_file.user_id))
+                            new_loop.close()
+                        
+                        agent_thread = threading.Thread(target=run_async_in_thread)
+                        agent_thread.start()
+                        agent_thread.join(timeout=300) # 5분 대기
+                    else:
+                        loop.run_until_complete(run_tagging_agent(str(file_id), audio_file_id_db, audio_file.user_id))
+                        
+                except Exception as agent_error:
+                    print(f"⚠️ 화자 태깅 에이전트 실행 실패 (무시함): {agent_error}")
 
             except Exception as db_error:
                 print(f"⚠️ DB 저장 실패: {db_error}")
@@ -480,18 +593,10 @@ def process_audio_pipeline(
         if nickname_result:
             detected_nicknames_list = [info.get('nickname') for info in nickname_result.values() if info.get('nickname')]
         
-        PROCESSING_STATUS[file_id] = {
-            "status": "completed",
-            "step": "완료",
-            "progress": 100,
-            "transcript_path": str(final_txt),
-            "diarization_path": str(work_dir / "diarization_result.json") if diarization_result else None,
-            "merged_path": str(work_dir / "merged_result.json") if merged_result else None,
-            "ner_path": str(work_dir / "ner_result.json") if ner_result else None,
-            "detected_names": ner_result['final_namelist'] if ner_result else [],
-            "detected_nicknames": detected_nicknames_list,  # 닉네임 추가
-            "speaker_count": len(diarization_result.get('embeddings', {})) if diarization_result else 0,
-        }
+        # 완료 시 메모리에서 제거하여 DB 조회를 유도
+        if file_id in PROCESSING_STATUS:
+            del PROCESSING_STATUS[file_id]
+            print(f"🧹 메모리 상태 제거 완료: {file_id}")
 
     except Exception as e:
         # 에러 발생 시 DB 업데이트
@@ -521,7 +626,8 @@ async def start_processing(
     background_tasks: BackgroundTasks,
     whisper_mode: str = None,  # "local" or "api" (None일 경우 설정값 사용)
     diarization_mode: str = None,  # "senko" or "nemo" (None일 경우 설정값 사용)
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: Any = Depends(get_current_user)
 ):
     """
     오디오 처리 시작 (백그라운드)
@@ -603,6 +709,7 @@ async def start_processing(
     background_tasks.add_task(
         process_audio_pipeline,
         actual_file_id,
+        current_user.id,
         use_whisper_mode,
         use_diarization_mode
     )
@@ -660,6 +767,7 @@ async def get_processing_status(file_id: str, db: Session = Depends(get_db)):
                 ).all()
                 detected_nicknames = [mapping.nickname for mapping in speaker_mappings if mapping.nickname]
                 status["detected_nicknames"] = detected_nicknames
+        print(f"[DEBUG] Memory Status for {actual_file_id}: {status.get('status')} (Step: {status.get('step')})")
         return status
 
     # DB에서 조회 (완료된 파일) - ID(숫자)로 먼저 시도
@@ -696,10 +804,11 @@ async def get_processing_status(file_id: str, db: Session = Depends(get_db)):
             detected_nicknames.append(mapping.nickname)
 
     # 완료된 파일의 상태 반환
+    print(f"[DEBUG] DB Status for {file_id}: {audio_file.status.value}")
     return {
         "status": audio_file.status.value if audio_file.status else "unknown",
-        "step": "완료" if audio_file.status.value == "COMPLETED" else "처리 중",
-        "progress": 100 if audio_file.status.value == "COMPLETED" else 0,
+        "step": "완료" if audio_file.status.value == "completed" else "처리 중",
+        "progress": 100 if audio_file.status.value == "completed" else 0,
         "speaker_count": speaker_count,
         "detected_names": detected_names,
         "detected_nicknames": detected_nicknames,  # 닉네임 추가

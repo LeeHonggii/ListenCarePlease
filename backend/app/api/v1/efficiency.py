@@ -3,7 +3,7 @@
 """
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
-from app.api.deps import get_db
+from app.api.deps import get_db, get_current_user
 from app.models.efficiency import MeetingEfficiencyAnalysis
 from app.models.audio_file import AudioFile
 from app.services.efficiency_analyzer import EfficiencyAnalyzer
@@ -402,7 +402,8 @@ def trigger_efficiency_analysis(
 @router.get("/overview")
 def get_efficiency_overview(
     db: Session = Depends(get_db),
-    limit: Optional[int] = 10
+    limit: Optional[int] = 10,
+    current_user = Depends(get_current_user)
 ):
     """
     전체 회의 효율성 조회 (메인 화면 대시보드용)
@@ -410,7 +411,9 @@ def get_efficiency_overview(
     - 최근 N개 회의의 효율성 분석 결과 요약
     - 엔트로피 값을 시간 비율(0-100%)로 정규화하여 반환
     """
-    analyses = db.query(MeetingEfficiencyAnalysis).join(AudioFile).order_by(
+    analyses = db.query(MeetingEfficiencyAnalysis).join(AudioFile).filter(
+        AudioFile.user_id == current_user.id
+    ).order_by(
         MeetingEfficiencyAnalysis.analyzed_at.desc()
     ).limit(limit).all()
 

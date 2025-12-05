@@ -24,6 +24,10 @@ class User(Base):
     # OAuth 관련
     oauth_provider = Column(Enum(OAuthProvider), nullable=True)
     oauth_id = Column(String(255), nullable=True)
+    
+    # Google Calendar Tokens
+    google_access_token = Column(String(255), nullable=True)
+    google_refresh_token = Column(String(255), nullable=True)
 
     # 상태
     is_active = Column(Boolean, default=True, nullable=False)

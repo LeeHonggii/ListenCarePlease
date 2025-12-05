@@ -1,7 +1,9 @@
 """
-STT 서비스 (I,O.md Step 3)
+STT 서비스
+
+Whisper API 기반 음성 전사 시스템
 - 청크 분할 (10분 단위)
-- Whisper API 전사
+- Whisper API/로컬 전사
 - 타임스탬프 병합
 - 중복 제거 후처리
 """
@@ -23,13 +25,20 @@ except ImportError:
     print("⚠️ openai-whisper not installed. Install with: pip install openai-whisper")
 
 
-# 설정
 SAMPLE_RATE = 16000
 CHUNK_MINUTES = 10
-MAX_TARGET_MB = 25  # Whisper API 제한 근접 경고
+MAX_TARGET_MB = 25
+
+re_srt_block = re.compile(
+    r"(\d+)\s+([\d:,]{12} --> [\d:,]{12})\s+(.+?)(?=\n\d+\n|\Z)", re.S
+)
+re_line = re.compile(
+    r"^\[(\d{2}:\d{2}:\d{2}\.\d{3})\s*-\s*(\d{2}:\d{2}:\d{2}\.\d{3})\]\s*(.*)$"
+)
+
+_whisper_model_cache = {}
 
 
-# ===== 시간/SRT 관련 유틸 =====
 def ms_to_srt_time(ms: int) -> str:
     """밀리초 → SRT 시간 형식 변환"""
     td = timedelta(milliseconds=ms)
@@ -48,15 +57,8 @@ def srt_time_to_ms(t: str) -> int:
     return (int(h) * 3600 + int(m) * 60 + int(s)) * 1000 + int(ms)
 
 
-re_srt_block = re.compile(
-    r"(\d+)\s+([\d:,]{12} --> [\d:,]{12})\s+(.+?)(?=\n\d+\n|\Z)", re.S
-)
-
-
 def parse_srt(srt_text: str) -> List[Tuple[str, str, str]]:
-    """
-    SRT 파서: (start, end, text) 리스트 반환
-    """
+    """SRT 파서: (start, end, text) 리스트 반환"""
     blocks = []
     for m in re_srt_block.finditer(srt_text):
         idx = m.group(1)
@@ -65,12 +67,6 @@ def parse_srt(srt_text: str) -> List[Tuple[str, str, str]]:
         st_str, et_str = [x.strip() for x in times.split("-->")]
         blocks.append((st_str, et_str, text))
     return blocks
-
-
-# ===== 텍스트 후처리 유틸 =====
-re_line = re.compile(
-    r"^\[(\d{2}:\d{2}:\d{2}\.\d{3})\s*-\s*(\d{2}:\d{2}:\d{2}\.\d{3})\]\s*(.*)$"
-)
 
 
 def parse_line(line: str) -> Tuple[str, str, str]:
@@ -128,7 +124,6 @@ def norm_for_compare(s: str) -> str:
     return s
 
 
-# ===== 청크 분할 =====
 def split_audio_chunks(
     preprocessed_wav: Path, chunk_dir: Path, chunk_minutes: int = CHUNK_MINUTES
 ) -> List[Path]:
@@ -170,10 +165,6 @@ def split_audio_chunks(
     return exported
 
 
-# ===== Local Whisper 전사 (openai-whisper) =====
-# 모델 캐시 (프로세스 전체에서 재사용)
-_whisper_model_cache = {}
-
 def transcribe_single_chunk_local(
     chunk_path: Path, srt_dir: Path, chunk_num: int, total_chunks: int,
     model_size: str = "large", device: str = "cpu"
@@ -198,7 +189,6 @@ def transcribe_single_chunk_local(
     if not LOCAL_WHISPER_AVAILABLE:
         raise ImportError("openai-whisper is not installed")
 
-    # CUDA 실제 사용 가능 여부 재확인
     if device == "cuda" and not torch.cuda.is_available():
         print("⚠️ CUDA requested but not available. Falling back to CPU.")
         device = "cpu"
@@ -209,7 +199,6 @@ def transcribe_single_chunk_local(
     try:
         start_time = time.time()
 
-        # 모델 로드 (캐싱됨 - 같은 크기의 모델은 재사용)
         model_key = f"{model_size}_{device}"
         if model_key not in _whisper_model_cache:
             print(f"📥 모델 로딩: {model_size} ({device})")
@@ -217,14 +206,12 @@ def transcribe_single_chunk_local(
 
         model = _whisper_model_cache[model_key]
 
-        # 전사 실행
         result = model.transcribe(
             str(chunk_path),
             language="ko",
             verbose=False
         )
 
-        # SRT 형식으로 변환
         srt_lines = []
         segment_num = 1
         for segment in result["segments"]:
@@ -268,7 +255,7 @@ def transcribe_chunks_with_local_whisper(
     """
     청크들을 로컬 Whisper로 순차 전사
 
-    Note: openai-whisper는 GPU 메모리를 많이 사용하므로 병렬 처리 대신 순차 처리
+    Note: GPU 메모리 사용량이 높아 병렬 처리 대신 순차 처리
 
     Args:
         chunk_files: 청크 WAV 파일 리스트
@@ -286,7 +273,6 @@ def transcribe_chunks_with_local_whisper(
     print(f"🚀 로컬 전사 시작: {len(chunk_files)}개 청크 (모델: {model_size}, 디바이스: {device})")
     start_time = time.time()
 
-    # 순차 처리 (openai-whisper는 메모리 사용량이 많아 병렬 처리 시 OOM 위험)
     srt_files = []
     for i, chunk_path in enumerate(chunk_files):
         srt_path = transcribe_single_chunk_local(
@@ -300,12 +286,11 @@ def transcribe_chunks_with_local_whisper(
     return srt_files
 
 
-# ===== Whisper 전사 (병렬 처리) =====
 def transcribe_single_chunk(
     chunk_path: Path, srt_dir: Path, openai_api_key: str, chunk_num: int, total_chunks: int
 ) -> Path:
     """
-    단일 청크를 Whisper로 전사
+    단일 청크를 Whisper API로 전사
 
     Args:
         chunk_path: 청크 WAV 파일 경로
@@ -349,7 +334,7 @@ def transcribe_chunks_with_whisper(
     chunk_files: List[Path], srt_dir: Path, openai_api_key: str
 ) -> List[Path]:
     """
-    청크들을 Whisper로 병렬 전사
+    청크들을 Whisper API로 병렬 전사
 
     Args:
         chunk_files: 청크 WAV 파일 리스트
@@ -368,10 +353,8 @@ def transcribe_chunks_with_whisper(
     print(f"🚀 병렬 전사 시작: {len(chunk_files)}개 청크")
     start_time = time.time()
 
-    # 병렬 처리 (최대 4개 동시 실행)
     srt_files_dict = {}
     with ThreadPoolExecutor(max_workers=4) as executor:
-        # 모든 청크를 병렬로 제출
         future_to_chunk = {
             executor.submit(
                 transcribe_single_chunk,
@@ -384,7 +367,6 @@ def transcribe_chunks_with_whisper(
             for i, cp in enumerate(chunk_files)
         }
 
-        # 완료된 순서대로 결과 수집
         for future in as_completed(future_to_chunk):
             idx, chunk_path = future_to_chunk[future]
             try:
@@ -394,7 +376,6 @@ def transcribe_chunks_with_whisper(
                 print(f"❌ 전사 실패: {chunk_path.name} - {e}")
                 raise
 
-    # 순서대로 정렬하여 반환
     srt_files = [srt_files_dict[i] for i in sorted(srt_files_dict.keys())]
 
     elapsed = time.time() - start_time
@@ -403,7 +384,6 @@ def transcribe_chunks_with_whisper(
     return srt_files
 
 
-# ===== 타임스탬프 병합 =====
 def merge_timestamps(
     chunk_files: List[Path], srt_files: List[Path], output_txt: Path
 ) -> Path:
@@ -418,7 +398,6 @@ def merge_timestamps(
     Returns:
         병합된 TXT 경로
     """
-    # 오프셋 계산
     offsets = []
     acc = 0
     for cp in chunk_files:
@@ -445,7 +424,6 @@ def merge_timestamps(
     return output_txt
 
 
-# ===== 후처리 (중복 제거) =====
 def postprocess_transcript(input_txt: Path, output_txt: Path) -> Path:
     """
     타임스탬프 TXT 후처리 (중복 제거)
@@ -499,7 +477,6 @@ def postprocess_transcript(input_txt: Path, output_txt: Path) -> Path:
     return output_txt
 
 
-# ===== 전체 STT 파이프라인 =====
 def run_stt_pipeline(
     preprocessed_wav: Path, work_dir: Path, openai_api_key: str = None,
     use_local_whisper: bool = True, model_size: str = "large",
@@ -524,12 +501,10 @@ def run_stt_pipeline(
     merged_txt = work_dir / "merged_transcript.txt"
     final_txt = work_dir / "final_transcript.txt"
 
-    # 1) 청크 분할
     print("[STT Step 1] 청크 분할...")
     chunk_files = split_audio_chunks(preprocessed_wav, chunk_dir)
     print(f"✅ {len(chunk_files)}개 청크 생성")
 
-    # 2) Whisper 전사
     if use_local_whisper:
         print(f"[STT Step 2] Local Whisper 전사 (모델: {model_size}, 디바이스: {device})...")
         srt_files = transcribe_chunks_with_local_whisper(
@@ -542,12 +517,10 @@ def run_stt_pipeline(
         srt_files = transcribe_chunks_with_whisper(chunk_files, srt_dir, openai_api_key)
     print(f"✅ {len(srt_files)}개 SRT 생성")
 
-    # 3) 타임스탬프 병합
     print("[STT Step 3] 타임스탬프 병합...")
     merge_timestamps(chunk_files, srt_files, merged_txt)
     print(f"✅ 병합 완료 → {merged_txt}")
 
-    # 4) 후처리
     print("[STT Step 4] 후처리 (중복 제거)...")
     postprocess_transcript(merged_txt, final_txt)
     print(f"✅ 최종 전사 완료 → {final_txt}")

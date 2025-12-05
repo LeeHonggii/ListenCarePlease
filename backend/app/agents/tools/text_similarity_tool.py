@@ -38,10 +38,7 @@ async def calculate_text_similarity(
             "sample_comparison": {}
         }
 
-    # 현재 발화들을 하나의 텍스트로 합치기
     combined_text = " ".join(current_utterances)
-
-    # OpenAI text-embedding-3-small 사용
     client = OpenAI(api_key=settings.OPENAI_API_KEY)
     
     try:
@@ -51,7 +48,6 @@ async def calculate_text_similarity(
         )
         current_embedding = response.data[0].embedding
     except Exception as e:
-        # 임베딩 생성 실패 시 빈 결과 반환
         return {
             "matched_profile": None,
             "similarity": 0.0,
@@ -70,8 +66,6 @@ async def calculate_text_similarity(
             continue
 
         stored_emb = np.array(stored_emb)
-
-        # 코사인 유사도 계산
         dot_product = np.dot(current_emb, stored_emb)
         norm_current = np.linalg.norm(current_emb)
         norm_stored = np.linalg.norm(stored_emb)
@@ -94,9 +88,6 @@ async def calculate_text_similarity(
             "similarity_score": float(best_similarity)
         }
     }
-
-
-
 
 
 

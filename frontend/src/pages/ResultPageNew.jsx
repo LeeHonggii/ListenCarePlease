@@ -44,11 +44,11 @@ export default function ResultPageNew() {
       } catch (error) {
         // 404는 아직 분석 중일 수 있으므로 무시하고 재시도
         if (error.response?.status === 404) {
-           timeoutId = setTimeout(pollEfficiency, 3000)
+          timeoutId = setTimeout(pollEfficiency, 3000)
         } else {
-           console.error('Efficiency polling error:', error)
-           // 다른 에러(네트워크 등)가 나도 잠시 후 재시도 (안정성 확보)
-           timeoutId = setTimeout(pollEfficiency, 5000)
+          console.error('Efficiency polling error:', error)
+          // 다른 에러(네트워크 등)가 나도 잠시 후 재시도 (안정성 확보)
+          timeoutId = setTimeout(pollEfficiency, 5000)
         }
       }
     }
@@ -78,15 +78,15 @@ export default function ResultPageNew() {
       // 3. 구간 분석 결과 조회 (자동 로드)
       if (response.data?.audio_file_id) {
         handleAnalyzeSections(response.data.audio_file_id)
-        
+
         // 4. 핵심 용어 조회
         try {
-            console.log('Fetching keywords for audio_file_id:', response.data.audio_file_id);
-            const kwResponse = await axios.get(`${API_BASE_URL}/api/v1/keyword/${response.data.audio_file_id}`)
-            console.log('Keywords response:', kwResponse.data);
-            setKeywords(kwResponse.data)
+          console.log('Fetching keywords for audio_file_id:', response.data.audio_file_id);
+          const kwResponse = await axios.get(`${API_BASE_URL}/api/v1/keyword/${response.data.audio_file_id}`)
+          console.log('Keywords response:', kwResponse.data);
+          setKeywords(kwResponse.data)
         } catch (kwError) {
-            console.log('핵심 용어 조회 실패:', kwError)
+          console.log('핵심 용어 조회 실패:', kwError)
         }
 
       } else {
@@ -108,13 +108,13 @@ export default function ResultPageNew() {
     // explicitId가 이벤트 객체이거나 유효하지 않으면 무시
     const validExplicitId = (typeof explicitId === 'number' || (typeof explicitId === 'string' && !isNaN(explicitId))) ? explicitId : null
     const targetId = validExplicitId || data?.audio_file_id
-    
+
     console.log('DEBUG CHECK: handleAnalyzeSections targetId:', targetId, 'explicitId:', explicitId, 'data.id:', data?.audio_file_id)
 
     if (!targetId || isNaN(targetId)) {
       console.error('유효한 audio_file_id가 없습니다. UUID는 사용할 수 없습니다:', fileId)
       // 데이터가 아직 로드되지 않았거나 ID가 없는 경우 중단
-      if (!data) return 
+      if (!data) return
       alert('오디오 파일 ID를 찾을 수 없습니다.')
       return
     }
@@ -192,7 +192,7 @@ export default function ResultPageNew() {
       if (contentDisposition) {
         const fileNameMatch = contentDisposition.match(/filename\*=UTF-8''(.+)/)
         if (fileNameMatch) {
-            fileName = decodeURIComponent(fileNameMatch[1])
+          fileName = decodeURIComponent(fileNameMatch[1])
         }
       }
 
@@ -221,14 +221,14 @@ export default function ResultPageNew() {
 
   // 현재 발화에 활성화된 키워드가 포함되는지 확인
   const isKeywordHighlighted = (text) => {
-      if (!activeKeyword) return false
-      const synonyms = Array.isArray(activeKeyword.synonyms) ? activeKeyword.synonyms : []
-      const targets = [activeKeyword.term, ...synonyms]
-      
-      const normalize = (str) => str.replace(/\s+/g, '').toLowerCase()
-      const normalizedText = normalize(text)
-      
-      return targets.some(target => normalizedText.includes(normalize(target)))
+    if (!activeKeyword) return false
+    const synonyms = Array.isArray(activeKeyword.synonyms) ? activeKeyword.synonyms : []
+    const targets = [activeKeyword.term, ...synonyms]
+
+    const normalize = (str) => str.replace(/\s+/g, '').toLowerCase()
+    const normalizedText = normalize(text)
+
+    return targets.some(target => normalizedText.includes(normalize(target)))
   }
 
   // 텍스트 하이라이팅 컴포넌트
@@ -237,25 +237,25 @@ export default function ResultPageNew() {
 
     const synonyms = Array.isArray(keyword.synonyms) ? keyword.synonyms : []
     const targets = [keyword.term, ...synonyms].filter(t => t && t.trim())
-    
+
     // 정규식 생성을 위해 특수문자 이스케이프 및 OR 조건 연결
     // 대소문자 무시 (i), 전역 검색 (g)
     const pattern = new RegExp(`(${targets.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'gi')
-    
+
     const parts = text.split(pattern)
 
     return (
       <>
         {parts.map((part, i) => {
-            // part가 targets 중 하나와 일치하는지 확인 (대소문자 무시)
-            const isMatch = targets.some(t => t.toLowerCase() === part.toLowerCase())
-            return isMatch ? (
-                <span key={i} className="bg-yellow-200 dark:bg-yellow-900/60 text-yellow-900 dark:text-yellow-100 font-bold px-1 rounded">
-                    {part}
-                </span>
-            ) : (
-                <span key={i}>{part}</span>
-            )
+          // part가 targets 중 하나와 일치하는지 확인 (대소문자 무시)
+          const isMatch = targets.some(t => t.toLowerCase() === part.toLowerCase())
+          return isMatch ? (
+            <span key={i} className="bg-yellow-200 dark:bg-yellow-900/60 text-yellow-900 dark:text-yellow-100 font-bold px-1 rounded">
+              {part}
+            </span>
+          ) : (
+            <span key={i}>{part}</span>
+          )
         })}
       </>
     )
@@ -265,8 +265,17 @@ export default function ResultPageNew() {
   const getChartData = () => {
     // 1. 효율성 분석 결과가 있는 경우
     if (efficiency?.speaker_metrics && Array.isArray(efficiency.speaker_metrics)) {
+      // 화자 이름 매핑 (효율성 분석 결과의 이름보다 data.mappings의 확정된 이름을 우선 사용)
+      const getSpeakerName = (metric) => {
+        const label = metric.speaker_label;
+        if (data?.mappings && data.mappings[label]) {
+          return data.mappings[label];
+        }
+        return metric.speaker_name || 'Unknown';
+      };
+
       const doughnutData = {
-        labels: efficiency.speaker_metrics.map(s => s.speaker_name || 'Unknown'),
+        labels: efficiency.speaker_metrics.map(s => getSpeakerName(s)),
         datasets: [{
           data: efficiency.speaker_metrics.map(s => s.turn_frequency?.total_duration || 0),
           backgroundColor: [
@@ -276,9 +285,9 @@ export default function ResultPageNew() {
           borderWidth: 1
         }]
       };
-      
+
       const barData = {
-        labels: efficiency.speaker_metrics.map(s => s.speaker_name || 'Unknown'),
+        labels: efficiency.speaker_metrics.map(s => getSpeakerName(s)),
         datasets: [{
           label: '발화 횟수',
           data: efficiency.speaker_metrics.map(s => s.turn_frequency?.turn_count || 0),
@@ -286,9 +295,9 @@ export default function ResultPageNew() {
           borderRadius: 4
         }]
       };
-      
+
       return { doughnutData, barData };
-    } 
+    }
     // 2. 효율성 분석은 없지만 회의록 데이터가 있는 경우 (로컬 계산)
     else if (data?.final_transcript && Array.isArray(data.final_transcript)) {
       const speakerStats = {};
@@ -301,7 +310,7 @@ export default function ResultPageNew() {
         speakerStats[name].count += 1;
       });
       const labels = Object.keys(speakerStats);
-      
+
       const doughnutData = {
         labels: labels,
         datasets: [{
@@ -313,7 +322,7 @@ export default function ResultPageNew() {
           borderWidth: 1
         }]
       };
-      
+
       const barData = {
         labels: labels,
         datasets: [{
@@ -323,10 +332,10 @@ export default function ResultPageNew() {
           borderRadius: 4
         }]
       };
-      
+
       return { doughnutData, barData };
     }
-    
+
     // 3. 데이터 없음
     const emptyData = { labels: [], datasets: [] };
     return { doughnutData: emptyData, barData: emptyData };
@@ -365,31 +374,31 @@ export default function ResultPageNew() {
 
         {/* 1. 효율성 차트 (점유율 & 빈도) */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* 발화 점유율 (Doughnut) */}
-            <div className="bg-bg-tertiary dark:bg-bg-tertiary-dark rounded-xl shadow-lg p-6 border border-bg-accent/30">
-              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">발화 점유율 (시간)</h3>
-              <div className="h-[300px] flex justify-center">
-                <Doughnut
-                  data={doughnutData}
-                  options={{ responsive: true, maintainAspectRatio: false }}
-                />
-              </div>
+          {/* 발화 점유율 (Doughnut) */}
+          <div className="bg-bg-tertiary dark:bg-bg-tertiary-dark rounded-xl shadow-lg p-6 border border-bg-accent/30">
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">발화 점유율 (시간)</h3>
+            <div className="h-[300px] flex justify-center">
+              <Doughnut
+                data={doughnutData}
+                options={{ responsive: true, maintainAspectRatio: false }}
+              />
             </div>
+          </div>
 
-            {/* 발화 빈도 (Bar) */}
-            <div className="bg-bg-tertiary dark:bg-bg-tertiary-dark rounded-xl shadow-lg p-6 border border-bg-accent/30">
-              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">발화 빈도 (횟수)</h3>
-              <div className="h-[300px]">
-                <Bar
-                  data={barData}
-                  options={{
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: { y: { beginAtZero: true } }
-                  }}
-                />
-              </div>
+          {/* 발화 빈도 (Bar) */}
+          <div className="bg-bg-tertiary dark:bg-bg-tertiary-dark rounded-xl shadow-lg p-6 border border-bg-accent/30">
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">발화 빈도 (횟수)</h3>
+            <div className="h-[300px]">
+              <Bar
+                data={barData}
+                options={{
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  scales: { y: { beginAtZero: true } }
+                }}
+              />
             </div>
+          </div>
         </div>
 
         {/* 2. 추가 기능 버튼 */}
@@ -525,13 +534,12 @@ export default function ResultPageNew() {
               {data?.final_transcript?.map((segment, index) => (
                 <div
                   key={index}
-                  className={`p-4 rounded-lg transition-all duration-300 ${
-                    isHighlighted(index)
+                  className={`p-4 rounded-lg transition-all duration-300 ${isHighlighted(index)
                       ? 'bg-teal-50 dark:bg-teal-900/30 border-b-4 border-teal-400 dark:border-teal-500' // 민트색 밑줄 강조
                       : isKeywordHighlighted(segment.text)
                         ? 'bg-yellow-50 dark:bg-yellow-900/30 border-b-4 border-yellow-400 dark:border-yellow-500' // 노란색 밑줄 강조 (키워드)
                         : 'bg-bg-secondary dark:bg-bg-secondary-dark hover:bg-bg-accent/20'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center justify-between mb-2">
                     <span className={`font-bold ${isHighlighted(index) ? 'text-teal-700 dark:text-teal-300' : 'text-accent-blue dark:text-blue-300'}`}>
@@ -556,85 +564,83 @@ export default function ResultPageNew() {
           {/* 오른쪽: 구간 정보 (1/3) */}
           {/* 오른쪽: 구간 정보 & 핵심 용어 (1/3) */}
           <div className="lg:col-span-1 space-y-6 h-fit sticky top-8">
-              {sections && Array.isArray(sections) && (
-                <div className="bg-bg-tertiary dark:bg-bg-tertiary-dark rounded-xl shadow-lg p-6 border border-bg-accent/30">
-                  <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                    <span>📑</span> 구간 분석 결과
-                  </h2>
-                  <div className="space-y-3">
-                    {sections.map((section, idx) => (
-                      <div
-                        key={idx}
-                        onClick={() => setActiveSection(prev => prev === section ? null : section)}
-                        className={`p-4 rounded-xl cursor-pointer transition-all border-2 ${
-                          activeSection === section
-                            ? 'border-teal-400 bg-teal-50 dark:bg-teal-900/20 shadow-md'
-                            : 'border-transparent bg-bg-secondary dark:bg-bg-secondary-dark hover:bg-bg-accent/10'
-                        }`}
-                      >
-                        <h3 className="font-bold text-gray-900 dark:text-white mb-2">
-                          {section.section_title || `섹션 ${idx + 1}`}
-                        </h3>
-                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-2 whitespace-pre-wrap">
-                          {section.discussion_summary}
-                        </p>
-                        <div className="flex items-center justify-between text-xs text-gray-500">
-                          <span>{section.meeting_type}</span>
-                          <span className="px-2 py-1 bg-gray-200 dark:bg-gray-700 rounded text-gray-700 dark:text-gray-300">
-                            발화 {section.start_index} ~ {section.end_index}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* 핵심 용어 (Key Words) */}
-              {/* 핵심 용어 (Key Words) */}
+            {sections && Array.isArray(sections) && (
               <div className="bg-bg-tertiary dark:bg-bg-tertiary-dark rounded-xl shadow-lg p-6 border border-bg-accent/30">
                 <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                  <span>🔑</span> 핵심 용어
+                  <span>📑</span> 구간 분석 결과
                 </h2>
-                {keywords && Array.isArray(keywords) && keywords.length > 0 ? (
-                  <>
-                    <div className="flex flex-wrap gap-2">
-                      {keywords.map((kw) => (
-                        <button
-                          key={kw.id}
-                          onClick={() => setActiveKeyword(prev => prev === kw ? null : kw)}
-                          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all border ${
-                            activeKeyword === kw
-                              ? 'bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200 border-yellow-400'
-                              : 'bg-bg-secondary dark:bg-bg-secondary-dark text-gray-700 dark:text-gray-300 border-transparent hover:bg-bg-accent/10'
-                          }`}
-                          title={kw.meaning}
-                        >
-                          {kw.term}
-                          {kw.importance >= 9 && <span className="ml-1 text-xs">🔥</span>}
-                        </button>
-                      ))}
-                    </div>
-                    {activeKeyword && (
-                      <div className="mt-4 p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-700">
-                          <h4 className="font-bold text-yellow-900 dark:text-yellow-100 mb-1">
-                              {activeKeyword.term} 
-                              <span className="ml-2 text-xs font-normal text-yellow-700 dark:text-yellow-300">
-                                  ({activeKeyword.glossary_display})
-                              </span>
-                          </h4>
-                          <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                              {activeKeyword.meaning}
-                          </p>
+                <div className="space-y-3">
+                  {sections.map((section, idx) => (
+                    <div
+                      key={idx}
+                      onClick={() => setActiveSection(prev => prev === section ? null : section)}
+                      className={`p-4 rounded-xl cursor-pointer transition-all border-2 ${activeSection === section
+                          ? 'border-teal-400 bg-teal-50 dark:bg-teal-900/20 shadow-md'
+                          : 'border-transparent bg-bg-secondary dark:bg-bg-secondary-dark hover:bg-bg-accent/10'
+                        }`}
+                    >
+                      <h3 className="font-bold text-gray-900 dark:text-white mb-2">
+                        {section.section_title || `섹션 ${idx + 1}`}
+                      </h3>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-2 whitespace-pre-wrap">
+                        {section.discussion_summary}
+                      </p>
+                      <div className="flex items-center justify-between text-xs text-gray-500">
+                        <span>{section.meeting_type}</span>
+                        <span className="px-2 py-1 bg-gray-200 dark:bg-gray-700 rounded text-gray-700 dark:text-gray-300">
+                          발화 {section.start_index} ~ {section.end_index}
+                        </span>
                       </div>
-                    )}
-                  </>
-                ) : (
-                  <p className="text-gray-500 dark:text-gray-400 text-sm">
-                    추출된 핵심 용어가 없습니다.
-                  </p>
-                )}
+                    </div>
+                  ))}
+                </div>
               </div>
+            )}
+
+            {/* 핵심 용어 (Key Words) */}
+            {/* 핵심 용어 (Key Words) */}
+            <div className="bg-bg-tertiary dark:bg-bg-tertiary-dark rounded-xl shadow-lg p-6 border border-bg-accent/30">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                <span>🔑</span> 핵심 용어
+              </h2>
+              {keywords && Array.isArray(keywords) && keywords.length > 0 ? (
+                <>
+                  <div className="flex flex-wrap gap-2">
+                    {keywords.map((kw) => (
+                      <button
+                        key={kw.id}
+                        onClick={() => setActiveKeyword(prev => prev === kw ? null : kw)}
+                        className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all border ${activeKeyword === kw
+                            ? 'bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200 border-yellow-400'
+                            : 'bg-bg-secondary dark:bg-bg-secondary-dark text-gray-700 dark:text-gray-300 border-transparent hover:bg-bg-accent/10'
+                          }`}
+                        title={kw.meaning}
+                      >
+                        {kw.term}
+                        {kw.importance >= 9 && <span className="ml-1 text-xs">🔥</span>}
+                      </button>
+                    ))}
+                  </div>
+                  {activeKeyword && (
+                    <div className="mt-4 p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-700">
+                      <h4 className="font-bold text-yellow-900 dark:text-yellow-100 mb-1">
+                        {activeKeyword.term}
+                        <span className="ml-2 text-xs font-normal text-yellow-700 dark:text-yellow-300">
+                          ({activeKeyword.glossary_display})
+                        </span>
+                      </h4>
+                      <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                        {activeKeyword.meaning}
+                      </p>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <p className="text-gray-500 dark:text-gray-400 text-sm">
+                  추출된 핵심 용어가 없습니다.
+                </p>
+              )}
+            </div>
           </div>
         </div>
       </div>

@@ -24,7 +24,7 @@ except ImportError:
 from app.core.device import get_device
 
 
-def run_diarization_nemo(audio_path: Path, device: str = None) -> Dict:
+def run_diarization_nemo(audio_path: Path, device: str = None, num_speakers: int = None) -> Dict:
     """
     NeMo를 사용한 화자 분리 (고급 모드)
 
@@ -80,7 +80,7 @@ def run_diarization_nemo(audio_path: Path, device: str = None) -> Dict:
             "duration": None,
             "label": "infer",
             "text": "-",
-            "num_speakers": None,
+            "num_speakers": num_speakers,
             "rttm_filepath": None,
             "uem_filepath": None
         }, f)
@@ -113,8 +113,8 @@ def run_diarization_nemo(audio_path: Path, device: str = None) -> Dict:
 
             'clustering': {
                 'parameters': {
-                    'oracle_num_speakers': False,
-                    'max_num_speakers': 10,
+                    'oracle_num_speakers': num_speakers is not None,
+                    'max_num_speakers': num_speakers if num_speakers is not None else 10,
                     'max_rp_threshold': 0.18,
                     'enhanced_count_thres': 60,
                     'sparse_search_volume': 40

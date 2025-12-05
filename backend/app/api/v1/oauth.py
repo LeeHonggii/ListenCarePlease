@@ -15,11 +15,16 @@ router = APIRouter()
 # Google OAuth
 # ============================================
 
-@router.get("/auth/google/login")
-async def google_login():
+@router.get("/auth/google/connect")
+async def google_connect(
+    redirect_url: str = "http://localhost:3000",
+    token: str = None,
+    db: Session = Depends(get_db)
+):
     """
-    구글 로그인 시작
-    - 구글 OAuth 동의 화면으로 리다이렉트
+    구글 계정 연동 시작 (로그인된 사용자 전용)
+    - state에 user_id를 담아서 보냄
+    - window.location.href로 이동하므로 Authorization 헤더 대신 query param으로 token을 받음
     """
     if not settings.GOOGLE_CLIENT_ID:
         raise HTTPException(
@@ -27,25 +32,65 @@ async def google_login():
             detail="Google OAuth가 설정되지 않았습니다."
         )
 
+    # 토큰 검증 및 사용자 추출
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="인증 토큰이 필요합니다."
+        )
+    
+    from app.core.security import decode_token
+    payload = decode_token(token)
+    if not payload or payload.get("type") != "access":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="유효하지 않은 토큰입니다."
+        )
+        
+    user_id = int(payload.get("sub"))
+    current_user = db.query(User).filter(User.id == user_id).first()
+    
+    if not current_user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="사용자를 찾을 수 없습니다."
+        )
+
+    # 캘린더 권한 추가
+    scope = "openid email profile https://www.googleapis.com/auth/calendar.events"
+    
+    # state 생성 (user_id와 redirect_url 포함)
+    state_data = {
+        "user_id": current_user.id,
+        "redirect_url": redirect_url,
+        "type": "connect"
+    }
+    # 간단한 base64 인코딩 (실제 운영 시에는 서명된 토큰 사용 권장)
+    import base64
+    import json
+    state = base64.urlsafe_b64encode(json.dumps(state_data).encode()).decode()
+
     google_auth_url = (
         "https://accounts.google.com/o/oauth2/v2/auth"
         f"?client_id={settings.GOOGLE_CLIENT_ID}"
         f"&redirect_uri={settings.GOOGLE_REDIRECT_URI}"
         "&response_type=code"
-        "&scope=openid email profile"
+        f"&scope={scope}"
         "&access_type=offline"
+        "&prompt=consent"
+        f"&state={state}"
     )
 
     return RedirectResponse(url=google_auth_url)
 
 
 @router.get("/auth/google/callback")
-async def google_callback(code: str, db: Session = Depends(get_db)):
+async def google_callback(code: str, state: str = None, db: Session = Depends(get_db)):
     """
     구글 OAuth 콜백
     - 인증 코드로 액세스 토큰 받기
     - 사용자 정보 조회
-    - 기존 사용자면 로그인, 신규면 회원가입
+    - state가 있으면 기존 계정 연동, 없으면 로그인/회원가입
     """
     if not settings.GOOGLE_CLIENT_ID or not settings.GOOGLE_CLIENT_SECRET:
         raise HTTPException(
@@ -74,6 +119,7 @@ async def google_callback(code: str, db: Session = Depends(get_db)):
 
         token_json = token_response.json()
         access_token = token_json.get("access_token")
+        refresh_token = token_json.get("refresh_token")
 
         # 2. 액세스 토큰으로 사용자 정보 조회
         userinfo_url = "https://www.googleapis.com/oauth2/v2/userinfo"
@@ -89,7 +135,37 @@ async def google_callback(code: str, db: Session = Depends(get_db)):
 
         userinfo = userinfo_response.json()
 
-    # 3. 사용자 정보 추출
+    # 3. 계정 연동 처리 (state 확인)
+    if state:
+        try:
+            import base64
+            import json
+            state_data = json.loads(base64.urlsafe_b64decode(state).decode())
+            
+            if state_data.get("type") == "connect" and state_data.get("user_id"):
+                user_id = state_data["user_id"]
+                redirect_url = state_data.get("redirect_url", "http://localhost:3000")
+                
+                # 기존 사용자 찾기
+                user = db.query(User).filter(User.id == user_id).first()
+                if not user:
+                    raise HTTPException(status_code=404, detail="User not found")
+                
+                # 토큰 업데이트 (연동)
+                user.google_access_token = access_token
+                if refresh_token:
+                    user.google_refresh_token = refresh_token
+                db.commit()
+                
+                # 원래 페이지로 리다이렉트
+                return RedirectResponse(url=redirect_url)
+                
+        except Exception as e:
+            print(f"State decoding error: {e}")
+            # 에러 발생 시 일반 로그인 흐름으로 진행하거나 에러 반환
+            pass
+
+    # 4. 일반 로그인/회원가입 처리
     email = userinfo.get("email")
     name = userinfo.get("name")
     google_id = userinfo.get("id")
@@ -100,31 +176,34 @@ async def google_callback(code: str, db: Session = Depends(get_db)):
             detail="이메일 정보를 가져올 수 없습니다."
         )
 
-    # 4. 기존 사용자 확인 (이메일 + OAuth 제공자로 확인)
     user = db.query(User).filter(
         User.email == email,
         User.oauth_provider == "google"
     ).first()
 
     if not user:
-        # 신규 사용자 - 회원가입
         user = User(
             email=email,
             full_name=name or email.split("@")[0],
             oauth_provider="google",
             oauth_id=google_id,
             is_active=True,
-            password_hash=None  # OAuth 사용자는 비밀번호 없음
+            password_hash=None,
+            google_access_token=access_token,
+            google_refresh_token=refresh_token
         )
         db.add(user)
         db.commit()
         db.refresh(user)
+    else:
+        user.google_access_token = access_token
+        if refresh_token:
+            user.google_refresh_token = refresh_token
+        db.commit()
 
-    # 5. JWT 토큰 발급
     access_token_jwt = create_access_token(data={"sub": str(user.id), "email": user.email})
     refresh_token_jwt = create_refresh_token(data={"sub": str(user.id), "email": user.email})
 
-    # 6. 프론트엔드로 리다이렉트 (토큰을 URL 파라미터로 전달)
     frontend_url = f"http://localhost:3000/oauth/callback?access_token={access_token_jwt}&refresh_token={refresh_token_jwt}"
     return RedirectResponse(url=frontend_url)
 

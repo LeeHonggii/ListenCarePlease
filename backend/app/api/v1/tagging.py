@@ -72,7 +72,11 @@ async def get_speaker_info(file_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/speaker-info/confirm")
-async def confirm_speaker_info(request: SpeakerInfoConfirmRequest, db: Session = Depends(get_db)):
+async def confirm_speaker_info(
+    request: SpeakerInfoConfirmRequest, 
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
     """
     화자 정보 확정 - 사용자가 수정한 화자 수 및 이름 저장
     """
@@ -120,6 +124,50 @@ async def confirm_speaker_info(request: SpeakerInfoConfirmRequest, db: Session =
 
         db.commit()
         print(f"✅ 화자 정보 저장 완료: audio_file_id={audio_file.id}")
+
+        # 화자 수가 변경되었거나, 기존에 확정된 적이 없다면 재분석 트리거
+        should_reprocess = False
+        if existing_confirmation:
+            if existing_confirmation.confirmed_speaker_count != speaker_count:
+                should_reprocess = True
+                print(f"🔄 화자 수 변경 감지: {existing_confirmation.confirmed_speaker_count} -> {speaker_count}")
+        else:
+            # 처음 확정하는 경우에도 재분석 (확실하게 하기 위해)
+            should_reprocess = True
+            print(f"🔄 화자 수 최초 확정: {speaker_count}명")
+
+        if should_reprocess:
+            from app.api.v1.processing import process_audio_pipeline, PROCESSING_STATUS
+            from app.models.audio_file import FileStatus
+            
+            # 상태 초기화
+            audio_file.status = FileStatus.PROCESSING
+            audio_file.processing_step = "preprocessing"
+            audio_file.processing_progress = 0
+            audio_file.processing_message = f"재분석 중 (화자 수: {speaker_count}명, STT 건너뜀)..."
+            db.commit()
+            
+            # 메모리 상태 초기화
+            PROCESSING_STATUS[file_id] = {
+                "status": "queued",
+                "step": f"재분석 대기 중 (화자 수: {speaker_count}명)...",
+                "progress": 0
+            }
+            
+            # 백그라운드 태스크 추가 (STT 건너뛰고 Diarization부터 다시 실행)
+            background_tasks.add_task(
+                process_audio_pipeline,
+                file_id=file_id,
+                user_id=audio_file.user_id, # Pass user_id
+                whisper_mode="local", # 기본값 사용
+                diarization_mode="nemo", # NeMo 강제 (화자 수 지정은 NeMo만 지원)
+                skip_stt=True # STT 건너뛰기
+            )
+            
+            return {
+                "message": f"화자 정보가 저장되었으며, {speaker_count}명으로 재분석을 시작합니다. (STT 생략)",
+                "status": "reprocessing_started"
+            }
 
         return {
             "message": "화자 정보가 저장되었습니다.",
@@ -258,6 +306,16 @@ async def analyze_speakers(
 
     if not audio_file:
         raise HTTPException(status_code=404, detail="파일을 찾을 수 없습니다")
+
+    # 처리 중인지 확인
+    from app.models.audio_file import FileStatus
+    if audio_file.status == FileStatus.PROCESSING:
+         print(f"⏳ 파일이 처리 중이므로 에이전트 실행을 예약하지 않습니다 (자동 실행됨): {file_id}")
+         return {
+            "file_id": file_id,
+            "message": "파일 처리 중입니다. 완료 후 자동으로 분석됩니다.",
+            "status": "processing"
+        }
 
     # Agent 실행 (백그라운드)
     background_tasks.add_task(
@@ -603,6 +661,16 @@ async def confirm_tagging(
 
     # 화자 태깅 완료 후 효율성 분석 자동 실행
     from app.api.v1.efficiency import run_efficiency_analysis
+    from app.models.efficiency import MeetingEfficiencyAnalysis
+    
+    # 기존 효율성 분석 결과 삭제 (재분석 시 stale data 방지)
+    # 삭제하면 프론트엔드는 404를 받고 로컬 계산(올바른 이름)으로 폴백함
+    db.query(MeetingEfficiencyAnalysis).filter(
+        MeetingEfficiencyAnalysis.audio_file_id == audio_file.id
+    ).delete()
+    db.commit()
+    print(f"🧹 기존 효율성 분석 결과 삭제 완료: {audio_file.id}")
+
     print(f"🚀 [Tagging] Triggering background efficiency analysis for file {audio_file.id}")
     background_tasks.add_task(run_efficiency_analysis, str(audio_file.id))
 

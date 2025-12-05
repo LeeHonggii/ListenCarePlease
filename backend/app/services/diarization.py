@@ -4,6 +4,7 @@
 - 모델 2: NeMo (정확, 세밀한 설정)
 - 화자별 임베딩 추출
 """
+import app.patch_torch  # Apply monkey patch first
 from pathlib import Path
 from typing import Dict, List
 import numpy as np
@@ -18,7 +19,7 @@ except ImportError:
 from app.core.device import get_device
 
 
-def run_diarization(audio_path: Path, device: str = None, mode: str = "senko") -> Dict:
+def run_diarization(audio_path: Path, device: str = None, mode: str = "senko", num_speakers: int = None) -> Dict:
     """
     화자 분리 통합 인터페이스
 
@@ -33,7 +34,7 @@ def run_diarization(audio_path: Path, device: str = None, mode: str = "senko") -
     if mode == "nemo":
         # NeMo 모델 사용
         from app.services.diarization_nemo import run_diarization_nemo
-        return run_diarization_nemo(audio_path, device)
+        return run_diarization_nemo(audio_path, device, num_speakers=num_speakers)
     else:
         # Senko 모델 사용 (기본값)
         return run_diarization_senko(audio_path, device)

@@ -48,8 +48,6 @@ async def calculate_voice_similarity(
             continue
 
         stored_emb = np.array(stored_emb)
-
-        # 코사인 유사도 계산
         dot_product = np.dot(new_emb, stored_emb)
         norm_new = np.linalg.norm(new_emb)
         norm_stored = np.linalg.norm(stored_emb)
@@ -68,9 +66,6 @@ async def calculate_voice_similarity(
         "similarity": float(best_similarity),
         "threshold_passed": best_similarity >= threshold
     }
-
-
-
 
 
 

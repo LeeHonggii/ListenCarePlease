@@ -1,4 +1,5 @@
-from fastapi import FastAPI
+import app.patch_torch  # Apply monkey patch first
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 
@@ -84,3 +85,6 @@ app.include_router(speaker_profile.router, prefix=f"{settings.API_V1_STR}/speake
 
 from app.api.v1 import export
 app.include_router(export.router, prefix=f"{settings.API_V1_STR}/export", tags=["export"])
+
+from app.api.v1 import calendar
+app.include_router(calendar.router, prefix=f"{settings.API_V1_STR}/calendar", tags=["calendar"])

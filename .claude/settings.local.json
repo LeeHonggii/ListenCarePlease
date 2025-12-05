@@ -24,7 +24,9 @@
       "Bash(powershell -Command \"docker ps -a\")",
       "Bash(docker volume:*)",
       "Bash(docker system prune:*)",
-      "Bash(timeout 10 docker logs:*)"
+      "Bash(timeout 10 docker logs:*)",
+      "Bash(find:*)",
+      "Bash(ls:*)"
     ],
     "deny": [],
     "ask": []

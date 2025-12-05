@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
 import { getAccessToken, isTokenExpired, removeTokens } from '../utils/auth'
-import { getCurrentUser, refreshToken as refreshAuthToken } from '../services/authService'
+import { getCurrentUser, refreshToken as refreshAuthToken, logout as apiLogout } from '../services/authService'
 
 const AuthContext = createContext(null)
 
@@ -52,12 +52,28 @@ export const AuthProvider = ({ children }) => {
     initAuth()
   }, [])
 
+  const logout = async () => {
+    try {
+      const token = getAccessToken()
+      if (token) {
+        await apiLogout(token)
+      }
+    } catch (error) {
+      console.error('Logout failed:', error)
+    } finally {
+      removeTokens()
+      setUser(null)
+      setIsAuthenticated(false)
+    }
+  }
+
   const value = {
     user,
     setUser,
     loading,
     isAuthenticated,
-    setIsAuthenticated
+    setIsAuthenticated,
+    logout
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

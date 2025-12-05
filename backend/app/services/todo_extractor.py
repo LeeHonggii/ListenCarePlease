@@ -200,13 +200,26 @@ def extract_todos_from_transcript(
     if not meeting_date:
         meeting_date = datetime.now().strftime("%Y-%m-%d")
 
-    # 1. 날짜 키워드가 포함된 문장 찾기 (앞뒤 3문장씩)
-    contexts = find_date_keyword_sentences(transcript_text)
+    # 1. 날짜 키워드 검색 (참고용으로 남겨두거나 제거 가능)
+    # 기존 로직은 키워드가 없으면 바로 리턴해버려서, 날짜 언급 없는 TODO를 놓침
+    
+    # 2. 전체 텍스트 분석으로 변경
+    # 토큰 제한을 고려하여 텍스트가 너무 길면 잘라야 할 수도 있음 (GPT-4o는 128k라 웬만하면 됨)
+    MAX_CHARS = 50000 
+    if len(transcript_text) > MAX_CHARS:
+        transcript_text = transcript_text[:MAX_CHARS] + "...(truncated)"
 
-    if not contexts:
-        return []
+    # GPT에게 전체 텍스트를 주고 TODO 추출 요청
+    # 기존 extract_todos_with_gpt 함수를 재사용하되, contexts 구조를 맞추거나 함수를 수정해야 함
+    # 여기서는 함수를 수정하는 대신, 전체 텍스트를 하나의 'context'로 포장하여 전달
+    
+    dummy_context = [{
+        'keyword': '전체 회의록',
+        'sentence_index': 0,
+        'context': transcript_text,
+        'matched_sentence': ''
+    }]
 
-    # 2. GPT로 TODO 추출
-    todos = extract_todos_with_gpt(contexts, meeting_date, openai_api_key)
+    todos = extract_todos_with_gpt(dummy_context, meeting_date, openai_api_key)
 
     return todos

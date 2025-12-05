@@ -71,14 +71,33 @@ RUN echo "Installing NeMo Toolkit with ASR support..." && \
     echo "Downgrading huggingface-hub to 0.23.2 for compatibility..." && \
     pip install --no-cache-dir --force-reinstall huggingface-hub==0.23.2
 
-# CUDA 라이브러리 심볼릭 링크 생성
+# CUDA 라이브러리 심볼릭 링크 생성 (동적 탐색 & 전역 링크)
 RUN echo "Creating CUDA library symlinks..." && \
-    cd /usr/local/lib/python3.11/site-packages/torch/lib && \
-    ln -sf libnvrtc-672ee683.so.11.2 libnvrtc.so && \
-    ln -sf libnvrtc-672ee683.so.11.2 libnvrtc.so.11 && \
-    ln -sf libnvrtc-672ee683.so.11.2 libnvrtc.so.11.2 && \
-    ln -sf libnvrtc-builtins.so.11.8 libnvrtc-builtins.so && \
-    ls -la libnvrtc*
+    SITE_PACKAGES="/usr/local/lib/python3.11/site-packages" && \
+    # libnvrtc 찾기 (builtins 제외)
+    NVRTC_PATH=$(find $SITE_PACKAGES -name "libnvrtc*.so.1*" ! -name "*builtins*" -print -quit) && \
+    if [ -n "$NVRTC_PATH" ]; then \
+    echo "Found NVRTC at $NVRTC_PATH"; \
+    ln -sf "$NVRTC_PATH" /usr/lib/libnvrtc.so; \
+    ln -sf "$NVRTC_PATH" /usr/lib/libnvrtc.so.11.2; \
+    ln -sf "$NVRTC_PATH" /usr/lib/libnvrtc.so.12; \
+    else \
+    echo "WARNING: libnvrtc not found"; \
+    fi && \
+    # builtins 찾기
+    BUILTIN_PATH=$(find $SITE_PACKAGES -name "libnvrtc-builtins.so*" -print -quit) && \
+    if [ -n "$BUILTIN_PATH" ]; then \
+    echo "Found Builtins at $BUILTIN_PATH"; \
+    ln -sf "$BUILTIN_PATH" /usr/lib/libnvrtc-builtins.so; \
+    # Link specific version name (e.g., libnvrtc-builtins.so.12.1)
+    BUILTIN_NAME=$(basename "$BUILTIN_PATH"); \
+    ln -sf "$BUILTIN_PATH" "/usr/lib/$BUILTIN_NAME"; \
+    else \
+    echo "WARNING: libnvrtc-builtins not found"; \
+    fi
+
+# Add NVIDIA library paths to LD_LIBRARY_PATH
+ENV LD_LIBRARY_PATH="/usr/local/lib/python3.11/site-packages/nvidia/cuda_nvrtc/lib:/usr/local/lib/python3.11/site-packages/nvidia/cudnn/lib:$LD_LIBRARY_PATH"
 
 # Whisper 모델 미리 다운로드 (large-v3, 약 3GB)
 # 다운로드만 하고 로드는 하지 않음 (메모리 절약)
@@ -107,8 +126,8 @@ COPY ./entrypoint.sh ./entrypoint.sh
 RUN sed -i 's/\r$//' ./entrypoint.sh && chmod +x ./entrypoint.sh
 
 # 템플릿 생성 스크립트 복사 및 실행
-COPY ./create_template.py ./create_template.py
-RUN mkdir -p /app/templates && python3 create_template.py
+# 템플릿 디렉토리 생성
+RUN mkdir -p /app/templates
 
 # 업로드 디렉토리 및 모델 캐시 디렉토리 생성
 RUN mkdir -p /app/uploads /app/temp /app/.cache
