@@ -67,7 +67,9 @@ async def get_speaker_info(file_id: str, db: Session = Depends(get_db)):
         "speaker_count": speaker_count,
         "detected_names": detected_names,
         "detected_nicknames": detected_nicknames,  # 닉네임 추가
-        "processing_status": audio_file.status.value if audio_file.status else "unknown"
+        "processing_status": audio_file.status.value if audio_file.status else "unknown",
+        "alignment_score": audio_file.alignment_score or 0.0,
+        "unassigned_duration": audio_file.unassigned_duration or 0.0
     }
 
 

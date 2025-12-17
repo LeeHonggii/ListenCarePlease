@@ -189,6 +189,75 @@ export default function SpeakerInfoConfirmPage() {
 
         {/* 메인 카드 */}
         <div className="bg-bg-tertiary dark:bg-bg-tertiary-dark rounded-2xl shadow-xl p-8 mb-6 border border-bg-accent/30">
+          
+          {/* 분석 품질 섹션 (신규 추가) */}
+          <div className="mb-8 pb-8 border-b border-gray-200 dark:border-gray-700">
+             <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                📊 분석 품질 리포트
+              </h2>
+              <div className="group relative">
+                <span className="text-gray-400 cursor-help">ℹ️</span>
+                <div className="absolute right-0 w-64 p-3 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity z-10 pointer-events-none mb-2 bottom-full">
+                  음성 인식(STT) 결과와 화자 분리(Diarization) 구간이 얼마나 잘 일치하는지 나타냅니다. 점수가 높을수록 분석 신뢰도가 높습니다.
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-8">
+              {/* 점수 게이지 */}
+              <div className="relative w-32 h-32 flex items-center justify-center">
+                 <svg className="w-full h-full" viewBox="0 0 36 36">
+                    <path
+                      d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                      fill="none"
+                      stroke="#eee"
+                      strokeWidth="3"
+                    />
+                    <path
+                      d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                      fill="none"
+                      stroke={
+                        (speakerInfo?.alignment_score ?? 0) >= 90 ? "#10B981" : 
+                        (speakerInfo?.alignment_score ?? 0) >= 70 ? "#F59E0B" : "#EF4444"
+                      }
+                      strokeWidth="3"
+                      strokeDasharray={`${speakerInfo?.alignment_score ?? 0}, 100`}
+                      className="transition-all duration-1000 ease-out"
+                    />
+                 </svg>
+                 <div className="absolute flex flex-col items-center">
+                    <span className={`text-2xl font-bold ${
+                      (speakerInfo?.alignment_score ?? 0) >= 90 ? "text-green-500" : 
+                      (speakerInfo?.alignment_score ?? 0) >= 70 ? "text-amber-500" : "text-red-500"
+                    }`}>
+                      {speakerInfo?.alignment_score ?? 0}%
+                    </span>
+                    <span className="text-xs text-gray-500">정렬 점수</span>
+                 </div>
+              </div>
+
+              {/* 세부 통계 */}
+              <div className="flex-1 space-y-3">
+                 <div className="flex justify-between items-center p-3 bg-bg-secondary dark:bg-bg-secondary-dark rounded-lg">
+                    <span className="text-gray-600 dark:text-gray-300 text-sm">할당되지 않은 오디오</span>
+                    <span className={`font-medium ${
+                      (speakerInfo?.unassigned_duration ?? 0) > 5.0 ? "text-amber-500" : "text-gray-900 dark:text-white"
+                    }`}>
+                      {speakerInfo?.unassigned_duration ?? 0}초
+                    </span>
+                 </div>
+                 <div className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
+                    {(speakerInfo?.alignment_score ?? 0) >= 90 
+                      ? "✅ 음성과 텍스트가 매우 잘 일치합니다." 
+                      : (speakerInfo?.alignment_score ?? 0) >= 70
+                      ? "⚠️ 일부 구간에서 화자를 특정하지 못했습니다."
+                      : "❌ 분석 품질이 낮습니다. 오디오 품질을 확인해주세요."}
+                 </div>
+              </div>
+            </div>
+          </div>
+          
           {/* 화자 수 섹션 */}
           <div className="mb-8 pb-8 border-b border-gray-200 dark:border-gray-700">
             <div className="flex items-center justify-between mb-4">

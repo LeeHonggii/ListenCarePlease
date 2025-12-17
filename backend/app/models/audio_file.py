@@ -41,6 +41,10 @@ class AudioFile(Base):
     rag_initialized = Column(Boolean, default=False, nullable=False)  # 벡터 DB 초기화 여부
     rag_initialized_at = Column(DateTime(timezone=True), nullable=True)  # 벡터 DB 초기화 시간
 
+    # 분석 품질 지표 (STT-Diarization 정렬)
+    alignment_score = Column(Float, nullable=True)  # 0.0 ~ 100.0 (정렬 점수)
+    unassigned_duration = Column(Float, nullable=True)  # 할당되지 않은 오디오 길이 (초)
+
     # 타임스탬프
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)

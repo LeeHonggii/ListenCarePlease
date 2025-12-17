@@ -154,60 +154,146 @@ def convert_senko_to_custom_format(senko_result: Dict) -> Dict:
 
 def merge_stt_with_diarization(
     stt_segments: List[Dict], diarization_result: Dict
-) -> List[Dict]:
+) -> Dict:
     """
-    STT 결과와 화자 분리 결과 병합
+    STT 결과와 화자 분리 결과 병합 (개선된 버전)
+    - STT 세그먼트 손실 방지 (100% 보존)
+    - 가장 많이 겹치는 화자에게 할당
+    - 겹치지 않는 경우 가까운 화자에게 할당하거나 UNKNOWN 처리
+    - 정렬 품질 점수 계산
 
     Args:
-        stt_segments: STT 결과
-            [{"text": str, "start": float, "end": float}, ...]
-        diarization_result: 화자 분리 결과
-            {"turns": [...], "embeddings": {...}}
+        stt_segments: STT 결과 [{"text": str, "start": float, "end": float}, ...]
+        diarization_result: 화자 분리 결과 {"turns": [...], "embeddings": {...}}
 
     Returns:
-        [
-            {
-                "speaker": "speaker_00",
-                "start": 0.0,
-                "end": 5.2,
-                "text": "안녕하세요"
-            },
-            ...
-        ]
+        {
+            "merged_result": [
+                {"speaker": "speaker_00", "start": 0.0, "end": 5.2, "text": "안녕하세요"}, ...
+            ],
+            "alignment_score": 95.5,  # 0~100점
+            "unassigned_duration": 2.5 # 초 단위
+        }
     """
+    import copy
+    
+    turns = diarization_result.get('turns', [])
+    if not turns:
+        # 분리 결과가 없으면 전체를 UNKNOWN으로 처리
+        return {
+            "merged_result": [
+                {
+                    "speaker": "UNKNOWN", 
+                    "start": s['start'], 
+                    "end": s['end'], 
+                    "text": s['text']
+                } for s in stt_segments
+            ],
+            "alignment_score": 0.0,
+            "unassigned_duration": sum(s['end'] - s['start'] for s in stt_segments)
+        }
+
     merged = []
-    stt_idx = 0
+    
+    total_stt_duration = 0.0
+    total_overlap_duration = 0.0
+    total_unassigned_duration = 0.0
+    
+    # 턴을 시작 시간 순으로 정렬 (이미 되어있겠지만 확인)
+    sorted_turns = sorted(turns, key=lambda x: x['start'])
+    
+    for stt in stt_segments:
+        s_start = stt['start']
+        s_end = stt['end']
+        s_text = stt['text']
+        s_dur = s_end - s_start
+        
+        total_stt_duration += s_dur
+        
+        # 1. 겹치는 화자 턴 찾기
+        overlaps = []
+        for turn in sorted_turns:
+            t_start = turn['start']
+            t_end = turn['end']
+            speaker = turn['speaker_label']
+            
+            # None 값 체크 (방어 코드)
+            if t_start is None or t_end is None or s_start is None or s_end is None:
+                continue
 
-    for turn in diarization_result['turns']:
-        speaker = turn['speaker_label']
-        start_turn = turn['start']
-        end_turn = turn['end']
+            # 겹치는 구간 계산
+            o_start = max(s_start, t_start)
+            o_end = min(s_end, t_end)
+            
+            if o_end > o_start:
+                overlap_dur = o_end - o_start
+                overlaps.append({
+                    "speaker": speaker,
+                    "duration": overlap_dur,
+                    "turn_start": t_start,
+                    "turn_end": t_end
+                })
+        
+        assigned_speaker = "UNKNOWN"
+        is_assigned = False
 
-        segment_text = ""
-
-        # STT 세그먼트 탐색
-        while stt_idx < len(stt_segments):
-            stt = stt_segments[stt_idx]
-            start_stt = stt['start']
-            end_stt = stt['end']
-
-            # STT 세그먼트가 현재 화자 구간 내에 있는 경우
-            if start_stt >= start_turn and start_stt < end_turn:
-                segment_text += stt['text'].strip() + " "
-                stt_idx += 1
-            elif start_stt >= end_turn:
-                # 다음 화자 구간으로 이동
-                break
+        if overlaps:
+            # 가장 많이 겹치는 화자 선택
+            best_overlap = max(overlaps, key=lambda x: x['duration'])
+            assigned_speaker = best_overlap['speaker']
+            total_overlap_duration += best_overlap['duration']
+            is_assigned = True
+        else:
+            # 겹치지 않는 경우: 가까운 화자 찾기 (Gap Filling)
+            # 허용 오차: 1.0초 이내면 인접 화자에게 붙임
+            gap_threshold = 1.0
+            min_dist = float('inf')
+            nearest_speaker = None
+            
+            for turn in sorted_turns:
+                t_start = turn['start']
+                t_end = turn['end']
+                
+                # STT가 턴보다 앞에 있는 경우거리
+                dist_before = max(0, t_start - s_end)
+                # STT가 턴보다 뒤에 있는 경우 거리
+                dist_after = max(0, s_start - t_end)
+                
+                dist = min(dist_before, dist_after) if dist_before > 0 and dist_after > 0 else max(dist_before, dist_after)
+                
+                # 턴 내부에 포함된 경우는 위 overlaps에서 처리되었으므로 여기선 고려 안함
+                # (실제로는 위에서 걸러지므로 여기 올 일 없음)
+                
+                if dist < min_dist:
+                    min_dist = dist
+                    nearest_speaker = turn['speaker_label']
+            
+            if min_dist <= gap_threshold and nearest_speaker:
+                assigned_speaker = nearest_speaker
+                # 인접 할당은 정렬 점수에는 일부만 반영하거나 반영 안 할 수도 있음
+                # 여기서는 '구제된' 것으로 보고 절반 정도 점수 부여 (선택사항)
+                # 우선 엄격하게 overlap만 점수로 치고, 이건 unassigned에서는 뺌
             else:
-                stt_idx += 1
+                total_unassigned_duration += s_dur
 
-        # 텍스트가 있는 경우만 추가
-        if segment_text.strip():
-            merged.append({
-                "speaker": speaker,
-                "start": start_turn,
-                "end": end_turn,
-                "text": segment_text.strip()
-            })
-
-    return merged
+        # 결과 리스트에 추가 (이전 화자와 같으면 텍스트 병합 여부는 선택사항. 여기선 세그먼트 1:1 유지)
+        # 단, 연속된 세그먼트가 같은 화자일 경우 병합하는 로직이 있으면 깔끔함
+        # 여기서는 세그먼트 단위 유지를 기본으로 함
+        
+        merged.append({
+            "speaker": assigned_speaker,
+            "start": s_start,
+            "end": s_end,
+            "text": s_text
+        })
+        
+    # 점수 계산
+    alignment_score = 0.0
+    if total_stt_duration > 0:
+        alignment_score = (total_overlap_duration / total_stt_duration) * 100.0
+        
+    return {
+        "merged_result": merged,
+        "alignment_score": round(alignment_score, 2),
+        "unassigned_duration": round(total_unassigned_duration, 2)
+    }

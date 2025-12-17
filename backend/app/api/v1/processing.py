@@ -280,13 +280,27 @@ def process_audio_pipeline(
                             "end": time_to_seconds(end_str)
                         })
 
-            # STT + Diarization 병합
-            merged_result = merge_stt_with_diarization(stt_segments, diarization_result)
+            # STT + Diarization 병합 (개선된 로직 사용)
+            # 반환값: {"merged_result": [...], "alignment_score": float, "unassigned_duration": float}
+            merge_response = merge_stt_with_diarization(stt_segments, diarization_result)
+            
+            merged_result = merge_response.get("merged_result", [])
+            alignment_score = merge_response.get("alignment_score", 0.0)
+            unassigned_duration = merge_response.get("unassigned_duration", 0.0)
+            
+            # 품질 지표 DB 저장 (즉시 반영)
+            if audio_file:
+                audio_file.alignment_score = alignment_score
+                audio_file.unassigned_duration = unassigned_duration
+                # 여기서 commit 유의 (아래쪽 흐름에서 commit 하겠지만 안전하게)
+                db.flush()
+
+            print(f"✅ STT-Diarization 병합 완료: 점수={alignment_score}%, 미할당={unassigned_duration}초")
 
             # 병합 결과 저장
             merged_json = work_dir / "merged_result.json"
             with open(merged_json, 'w', encoding='utf-8') as f:
-                json.dump(merged_result, f, ensure_ascii=False, indent=2)
+                json.dump(merge_response, f, ensure_ascii=False, indent=2)
 
         except Exception as diarization_error:
             import traceback
