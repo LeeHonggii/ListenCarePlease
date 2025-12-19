@@ -6,6 +6,22 @@
 
 ---
 
+## 🚧 개발 저장소
+
+현재 활발한 개발 및 신규 기능 추가는 별도 저장소에서 진행 중입니다:
+
+### 👉 **[ListenCarePlease-Development](https://github.com/LeeHonggii/ListenCarePlease-Development)**
+
+**주요 개발 내용**:
+- STT-Diarization 정렬 품질 지표 추가
+- 화자 분리 알고리즘 개선
+- 실시간 품질 모니터링 UI
+- 성능 최적화 및 안정성 개선
+
+안정화된 기능은 이 저장소에 병합 예정입니다.
+
+---
+
 ## 📌 프로젝트 소개
 
 ### 🧑‍💻 팀원 (Team)
