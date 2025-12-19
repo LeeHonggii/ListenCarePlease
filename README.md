@@ -529,8 +529,6 @@ python -m listencare.cli pipeline \
 - 실시간 품질 모니터링 UI
 - 성능 최적화 및 안정성 개선
 
-안정화된 기능은 이 저장소에 병합 예정입니다.
-
 ---
 
 
